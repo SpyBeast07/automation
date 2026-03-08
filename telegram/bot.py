@@ -10,11 +10,16 @@ AUTHORIZED_USERNAME = "SpyBeast07"
 BASE_DIR = "/storage"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
+# Global reference for background tasks
+_bot_instance = None
+
 class TelegramBot:
     def __init__(self, token: str, agent_controller):
+        global _bot_instance
         self.token = token
         self.agent_controller = agent_controller
         self.app = ApplicationBuilder().token(self.token).build()
+        _bot_instance = self.app.bot
         
         self.app.add_handler(CommandHandler("start", self.start_cmd))
         self.app.add_handler(CommandHandler("run", self.run_cmd))
@@ -66,9 +71,21 @@ class TelegramBot:
         if not self.is_authorized(update):
             return
         user_message = update.message.text
+        user_id = str(update.message.from_user.id)
+        
         await update.message.reply_text("Thinking...")
-        result = self.ask_ai(user_message)
-        await update.message.reply_text(result[:4000])
+        
+        # Use LangChain agent to process the message asynchronously
+        result = await self.agent_controller.process_message(user_message, chat_id=update.effective_chat.id)
+        
+        await update.message.reply_text(result)
+        
+        # Save to database if available
+        try:
+            from database.db import save_chat
+            save_chat(user_id, user_message, result)
+        except Exception as e:
+            logger.warning(f"Failed to save chat to DB: {e}")
 
     async def start(self):
         logger.info("Starting Telegram bot...")

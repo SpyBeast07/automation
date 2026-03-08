@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from config.settings import BOT_TOKEN, DATABASE_URL, OLLAMA_BASE_URL, OLLAMA_MODEL
-from ai.ollama_client import OllamaClient
 from agent.agent_controller import AgentController
 import sys
 import os
@@ -23,7 +22,7 @@ sys.modules["local_telegram_bot"] = local_bot_module
 spec.loader.exec_module(local_bot_module)
 TelegramBot = local_bot_module.TelegramBot
 from database.db import connect_db, create_tables
-from scheduler.scheduler import JobScheduler
+from scheduler.scheduler import get_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -32,16 +31,23 @@ async def main():
     logger.info("Initializing services...")
     
     # Initialize components
-    # connect_db() implicitly calls create_tables() in its implementation
-    db_client = connect_db()
+    db_client = None
+    try:
+        # connect_db() implicitly calls create_tables() in its implementation
+        db_client = connect_db()
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}. Running without persistent DB features.")
     
-    llm_client = OllamaClient(OLLAMA_BASE_URL, OLLAMA_MODEL)
-    agent_controller = AgentController(llm_client)
+    agent_controller = AgentController(OLLAMA_BASE_URL, OLLAMA_MODEL)
     
     bot = TelegramBot(BOT_TOKEN, agent_controller)
     
-    scheduler = JobScheduler()
-    scheduler.start()
+    scheduler = None
+    try:
+        scheduler = get_scheduler()
+        scheduler.start()
+    except Exception as e:
+        logger.error(f"Scheduler failed to start: {e}. Job persistence might be disabled.")
 
     logger.info("Starting main bot loop...")
     try:
@@ -54,8 +60,10 @@ async def main():
         logger.info("Shutting down...")
     finally:
         await bot.stop()
-        scheduler.stop()
-        db_client.disconnect()
+        if scheduler:
+            scheduler.stop()
+        if db_client:
+            db_client.disconnect()
 
 if __name__ == "__main__":
     try:
