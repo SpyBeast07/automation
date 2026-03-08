@@ -24,22 +24,51 @@ class AgentController:
             "remove_scheduled_job": remove_scheduled_job
         }
         
-        # Stricter prompt to ensure tool use
+        # Enhanced Prompt with diverse few-shot examples
         self.prompt = PromptTemplate.from_template("""You are a personal assistant.
-You MUST use a tool if the user's request matches one of the tools below.
+You MUST use a tool if the user wants to schedule, list, or remove a task.
 
-Tools available:
+Available tools:
 - get_current_time: Returns current time. No input needed.
 - schedule_task_interval: Schedules a repeating task. Input: 'Task Name, seconds'. e.g. 'Coffee, 300'
 - schedule_task_cron: Schedules a task via cron. Input: 'Name, cron'. e.g. 'Meeting, 0 14 * * 1'
-- list_active_jobs: Lists ALL currently active tasks. No input needed. USE THIS if user asks 'what are my tasks' or 'list jobs'.
+- list_active_jobs: Lists all active tasks. No input needed.
 - remove_scheduled_job: Removes a task. Input: 'Job ID'. e.g. 'Coffee'
 
-To use a tool, respond ONLY in this format:
+Format for tool use:
 ACTION: <tool_name>
 INPUT: <tool_input>
 
-If no tool fits, answer the question normally.
+### Examples of varied styles:
+User: "Remind me to drink water every 10 minutes"
+ACTION: schedule_task_interval
+INPUT: Drink Water, 600
+
+User: "Check the server status every hour"
+ACTION: schedule_task_interval
+INPUT: Server Status, 3600
+
+User: "I want a daily alarm at 8 AM for Gym"
+ACTION: schedule_task_cron
+INPUT: Gym, 0 8 * * *
+
+User: "What's currently scheduled?"
+ACTION: list_active_jobs
+INPUT: 
+
+User: "Cancel the water reminder"
+ACTION: remove_scheduled_job
+INPUT: Drink Water
+
+User: "Stop the job named Gym"
+ACTION: remove_scheduled_job
+INPUT: Gym
+
+User: "Tell me the time"
+ACTION: get_current_time
+INPUT: 
+
+If no tool fits (like a greeting), just answer normally.
 
 Question: {input}
 Response:""")
@@ -65,7 +94,8 @@ Response:""")
                 if tool_name in self.tools:
                     tool = self.tools[tool_name]
                     logger.info(f"Routing to tool {tool_name} for chat {chat_id} with input: {tool_input}")
-                    # Call _run directly to ensure chat_id is passed (LangChain's run() strips unknown kwargs)
+                    
+                    # Call _run directly and pass chat_id if supported
                     if tool_name in ["schedule_task_interval", "schedule_task_cron"]:
                         tool_result = await asyncio.to_thread(tool._run, tool_input, chat_id=chat_id)
                     else:

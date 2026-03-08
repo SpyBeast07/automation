@@ -21,7 +21,7 @@ local_bot_module = importlib.util.module_from_spec(spec)
 sys.modules["local_telegram_bot"] = local_bot_module
 spec.loader.exec_module(local_bot_module)
 TelegramBot = local_bot_module.TelegramBot
-from database.db import connect_db, create_tables
+from database.db import connect_db
 from scheduler.scheduler import get_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

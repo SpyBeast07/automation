@@ -31,6 +31,17 @@ async def notify_telegram(chat_id, message):
     except Exception as e:
         logger.error(f"Error sending telegram notification: {e}")
 
+async def execute_task(task_name: str, chat_id: Optional[int] = None):
+    """
+    Top-level task executor that can be serialized by APScheduler.
+    Must be top-level to be importable by the scheduler on restart.
+    """
+    logger.info(f"Background Task Triggered: {task_name} (ChatID: {chat_id})")
+    if chat_id:
+        await notify_telegram(chat_id, f"🔔 Task Reminder: {task_name}")
+    else:
+        logger.warning(f"No chat_id found for task {task_name}, cannot notify.")
+
 class GetCurrentTimeTool(BaseTool):
     name: str = "get_current_time"
     description: str = "Returns the current system time. Useful for scheduling. Takes no input."
@@ -56,18 +67,17 @@ class ScheduleIntervalTool(BaseTool):
             task_name = parts[0]
             seconds = int(parts[1])
 
-            # Use an async function for the job so APScheduler awaits it correctly
-            async def job_func():
-                logger.info(f"Background Task Triggered: {task_name} (ChatID: {chat_id})")
-                if chat_id:
-                    await notify_telegram(chat_id, f"🔔 Task Reminder: {task_name}")
-                else:
-                    logger.warning(f"No chat_id found for task {task_name}, cannot notify.")
-                
-            job = schedule_interval(job_func, seconds, job_id=task_name)
+            # Pass the top-level executor and arguments for serialization
+            job = schedule_interval(
+                execute_task, 
+                seconds, 
+                job_id=task_name, 
+                args=[task_name, chat_id]
+            )
             logger.info(f"Job scheduled successfully: {job.id}")
             return f"Successfully scheduled task '{task_name}' every {seconds} seconds. I will notify you here."
         except Exception as e:
+            logger.error(f"Error in ScheduleIntervalTool: {e}")
             return f"Error: {str(e)}. Ensure input is 'name, seconds'."
 
 class ScheduleCronTool(BaseTool):
@@ -86,12 +96,13 @@ class ScheduleCronTool(BaseTool):
             task_name = parts[0]
             cron_expression = parts[1]
 
-            async def job_func():
-                logger.info(f"Background task executing: {task_name}")
-                if chat_id:
-                    await notify_telegram(chat_id, f"🔔 Scheduled Alert: {task_name}")
-                
-            job = schedule_cron(job_func, cron_expression, job_id=task_name)
+            # Pass the top-level executor and arguments for serialization
+            job = schedule_cron(
+                execute_task, 
+                cron_expression, 
+                job_id=task_name, 
+                args=[task_name, chat_id]
+            )
             return f"Successfully scheduled task '{task_name}' ({cron_expression}). I will notify you here."
         except Exception as e:
             return f"Error: {str(e)}. Ensure input is 'name, cron_expression'."

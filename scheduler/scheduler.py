@@ -18,9 +18,10 @@ class JobScheduler:
             self.scheduler = AsyncIOScheduler(jobstores=jobstores)
             logger.info("Initialized persistent scheduler with PostgreSQL store.")
         except Exception as e:
-            logger.error(f"Failed to initialize PostgreSQL job store: {e}. Falling back to MemoryJobStore.")
+            logger.error(f"Failed to initialize PostgreSQL job store: {e}. Falling back to SQLite persistence.")
+            # Use SQLite for persistence instead of just memory
             jobstores = {
-                'default': MemoryJobStore()
+                'default': SQLAlchemyJobStore(url="sqlite:///jobs.sqlite")
             }
             self.scheduler = AsyncIOScheduler(jobstores=jobstores)
 
@@ -31,10 +32,21 @@ class JobScheduler:
             try:
                 self.scheduler.start()
             except Exception as e:
-                logger.error(f"Error starting scheduler with current stores: {e}. Attempting memory fallback.")
-                from apscheduler.jobstores.memory import MemoryJobStore
-                self.scheduler = AsyncIOScheduler(jobstores={'default': MemoryJobStore()})
-                self.scheduler.start()
+                logger.error(f"Error starting scheduler with SQLite/Postgres: {e}. Attempting SQLite persistence fallback.")
+                # If it failed to start, it's likely due to Postgres connection in the jobstore
+                try:
+                    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+                    jobstores = {
+                        'default': SQLAlchemyJobStore(url="sqlite:///jobs.sqlite")
+                    }
+                    self.scheduler = AsyncIOScheduler(jobstores=jobstores)
+                    self.scheduler.start()
+                    logger.info("Scheduler successfully started with SQLite persistence.")
+                except Exception as e2:
+                    logger.error(f"Emergency memory fallback: {e2}")
+                    from apscheduler.jobstores.memory import MemoryJobStore
+                    self.scheduler = AsyncIOScheduler(jobstores={'default': MemoryJobStore()})
+                    self.scheduler.start()
         else:
             logger.warning("Scheduler is already running.")
 
