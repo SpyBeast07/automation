@@ -104,10 +104,9 @@ async def run(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}")
 
 
-if __name__ == "__main__":
+def create_app():
     if not TOKEN:
-        print("Error: TELEGRAM_TOKEN not found in .env file.")
-        exit(1)
+        raise ValueError("TELEGRAM_TOKEN not found in environment variables.")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -116,6 +115,13 @@ if __name__ == "__main__":
 
     # AI message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    return app
 
+def run_bot():
+    app = create_app()
     print("Bot running (Async)...")
     app.run_polling()
+
+if __name__ == "__main__":
+    run_bot()
