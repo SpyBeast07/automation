@@ -16,8 +16,19 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
 
 # ---------- SECURITY CHECK ----------
-def is_authorized(update: Update):
-    user = update.message.from_user
+def get_user(update):
+    if update.message:
+        return update.message.from_user
+    if update.callback_query:
+        return update.callback_query.from_user
+    return None
+
+
+def is_authorized(update):
+    user = get_user(update)
+    if not user:
+        return False
+
     return user.username == AUTHORIZED_USERNAME
 
 
