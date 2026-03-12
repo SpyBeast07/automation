@@ -6,16 +6,22 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Load environment variables
+from bot_app.status import get_system_status
+from bot_app.fan_control import fan_logic, get_fan_status
+
+# ---------- ENV ----------
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 AUTHORIZED_USERNAME = os.getenv("AUTHORIZED_USERNAME")
 BASE_DIR = os.getenv("BASE_DIR", "/storage")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# Global HTTP client
+http_client = httpx.AsyncClient(timeout=120.0)
 
-# ---------- SECURITY CHECK ----------
+# ---------- SECURITY ----------
 def get_user(update):
     if update.message:
         return update.message.from_user
@@ -32,21 +38,76 @@ def is_authorized(update):
     return user.username == AUTHORIZED_USERNAME
 
 
+# ---------- STATUS ----------
+async def status(update, context):
+    if not is_authorized(update):
+        return
+
+    result = get_system_status()
+
+    for i in range(0, len(result), 4000):
+        await update.message.reply_text(result[i:i+4000])
+
+
+# ---------- FANS ----------
+async def fans(update, context):
+    if not is_authorized(update):
+        return
+
+    result = get_fan_status()
+
+    for i in range(0, len(result), 4000):
+        await update.message.reply_text(result[i:i+4000])
+
+
+# ---------- FAN MONITOR ----------
+async def fan_monitor(app):
+
+    await asyncio.sleep(10)
+
+    while True:
+
+        try:
+            temp, speed, changed = fan_logic()
+
+            if changed and CHAT_ID:
+
+                text = f"""
+Fan control triggered:
+
+Temperature: {temp} °C
+Fan Speed Set: {speed} %
+"""
+
+                await app.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=text
+                )
+
+        except Exception as e:
+            print("Fan monitor error:", e)
+
+        await asyncio.sleep(30)
+
+
 # ---------- AI ----------
 async def ask_ai(prompt):
+
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                OLLAMA_URL,
-                json={
-                    "model": "phi3",
-                    "prompt": prompt,
-                    "stream": False
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("response", "No response")
+        response = await http_client.post(
+            OLLAMA_URL,
+            json={
+                "model": "phi3",
+                "prompt": prompt,
+                "stream": False
+            }
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return data.get("response", "No response")
 
     except Exception as e:
         return f"AI error: {e}"
@@ -54,85 +115,97 @@ async def ask_ai(prompt):
 
 # ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not is_authorized(update):
         return
 
     await update.message.reply_text(
-        "Server Bot Ready (Async).\nSend any message to talk with AI.\n\nCommands:\n/start\n/run"
+        "Server Bot Ready\n\nCommands:\n/start\n/run\n/system\n/fans"
     )
 
 
 # ---------- AI CHAT ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not is_authorized(update):
         return
 
     user_message = update.message.text
+
     await update.message.reply_text("Thinking...")
 
     result = await ask_ai(user_message)
-    
-    # Telegram message limit is 4096
-    if len(result) > 4000:
-        for i in range(0, len(result), 4000):
-            await update.message.reply_text(result[i:i+4000])
-    else:
-        await update.message.reply_text(result)
+
+    for i in range(0, len(result), 4000):
+        await update.message.reply_text(result[i:i+4000])
 
 
 # ---------- RUN COMMAND ----------
 async def run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not is_authorized(update):
         return
 
     if not context.args:
-        await update.message.reply_text("Please provide a command to run.")
+        await update.message.reply_text("Usage: /run <command>")
         return
 
     cmd = " ".join(context.args)
 
     try:
-        # Using asyncio.create_subprocess_shell for non-blocking execution
+
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=BASE_DIR
         )
+
         stdout, _ = await process.communicate()
-        output = stdout.decode()
+
+        output = stdout.decode().strip()
 
         if not output:
-            output = "Command executed with no output."
+            output = "Command executed successfully."
 
-        if len(output) > 4000:
-            for i in range(0, len(output), 4000):
-                await update.message.reply_text(output[i:i+4000])
-        else:
-            await update.message.reply_text(output)
+        for i in range(0, len(output), 4000):
+            await update.message.reply_text(output[i:i+4000])
 
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
 
-def create_app():
-    if not TOKEN:
-        raise ValueError("TELEGRAM_TOKEN not found in environment variables.")
+# ---------- APP ----------
+async def on_startup(app):
+    asyncio.create_task(fan_monitor(app))
 
-    app = ApplicationBuilder().token(TOKEN).build()
+
+def create_app():
+
+    if not TOKEN:
+        raise ValueError("TELEGRAM_TOKEN not found")
+
+    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("run", run))
+    app.add_handler(CommandHandler("system", status))
+    app.add_handler(CommandHandler("fans", fans))
 
-    # AI message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+
     return app
 
+
+# ---------- MAIN ----------
 def run_bot():
+
     app = create_app()
-    print("Bot running (Async)...")
+
+    print("Bot running...")
+
     app.run_polling()
+
 
 if __name__ == "__main__":
     run_bot()
