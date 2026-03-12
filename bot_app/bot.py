@@ -8,6 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 
 from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
+from bot_app.system_warnings import check_system_health
 
 # ---------- ENV ----------
 load_dotenv()
@@ -88,6 +89,29 @@ Fan Speed Set: {speed} %
             print("Fan monitor error:", e)
 
         await asyncio.sleep(30)
+
+
+# ---------- SYSTEM MONITOR ----------
+async def system_monitor(app):
+
+    await asyncio.sleep(15)
+
+    while True:
+
+        try:
+            warning_msg = check_system_health()
+
+            if warning_msg and CHAT_ID:
+                await app.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=warning_msg,
+                    parse_mode="Markdown"
+                )
+
+        except Exception as e:
+            print("System monitor error:", e)
+
+        await asyncio.sleep(60)
 
 
 # ---------- AI ----------
@@ -178,6 +202,7 @@ async def run(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- APP ----------
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
+    asyncio.create_task(system_monitor(app))
 
 
 def create_app():
