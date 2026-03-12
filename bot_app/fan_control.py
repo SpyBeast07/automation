@@ -1,5 +1,4 @@
 import subprocess
-import time
 
 
 def get_fan_status():
@@ -10,7 +9,21 @@ def get_fan_status():
         return f"Fan status error: {e}"
 
 
-LAST_SPEED = None
+def get_current_speed():
+    try:
+        output = subprocess.check_output(["nbfc", "status"]).decode()
+
+        for line in output.split("\n"):
+            if "Requested Fan Speed" in line:
+                return int(float(line.split(":")[1].strip()))
+
+    except:
+        pass
+
+    return None
+
+
+LAST_SPEED = get_current_speed()
 
 
 def get_temp():
@@ -24,19 +37,19 @@ def get_temp():
 
 
 def set_speed(speed):
-
     global LAST_SPEED
 
     if LAST_SPEED == speed:
         return False
 
     subprocess.run(["nbfc", "set", "-s", str(speed)])
+
     LAST_SPEED = speed
+
     return True
 
 
 def fan_logic():
-
     temp = get_temp()
 
     if temp < 45:
