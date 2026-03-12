@@ -1,5 +1,4 @@
 import os
-import subprocess
 import httpx
 import asyncio
 from dotenv import load_dotenv
