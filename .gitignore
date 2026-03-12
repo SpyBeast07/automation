@@ -3,3 +3,4 @@ venv/
 __pycache__/
 .DS_Store
 ._.DS_Store
+gmail_cred.json

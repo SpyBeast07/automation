@@ -144,7 +144,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "Server Bot Ready\n\nCommands:\n/start\n/run\n/system\n/fans"
+        """
+Commands:
+/start
+
+/run -- Run commands
+
+/system -- Get system status
+/fans -- Get fan status
+"""
     )
 
 
