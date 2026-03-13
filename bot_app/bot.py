@@ -9,6 +9,7 @@ from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion
+from bot_app.downloader import handle_download
 
 # ---------- ENV ----------
 load_dotenv()
@@ -155,6 +156,8 @@ Commands:
 
 /ex -- Add new expense
 /cat -- List expense categories
+
+/dl <link> -- Download media from a link
 """
     )
 
@@ -233,6 +236,31 @@ async def cat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result, parse_mode="Markdown")
 
 
+# ---------- DOWNLOADER ----------
+async def dl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /dl <link>")
+        return
+
+    url = context.args[0]
+    
+    if not url.startswith("http"):
+        await update.message.reply_text("Send a valid URL.")
+        return
+
+    await update.message.reply_text("Downloading...")
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, handle_download, url)
+        await update.message.reply_text(f"Download complete: {result}")
+    except Exception as e:
+        await update.message.reply_text(f"Download failed:\n{e}")
+
+
 # ---------- APP ----------
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
@@ -252,6 +280,7 @@ def create_app():
     app.add_handler(CommandHandler("fans", fans))
     app.add_handler(CommandHandler("ex", ex_command))
     app.add_handler(CommandHandler("cat", cat_command))
+    app.add_handler(CommandHandler("dl", dl_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
