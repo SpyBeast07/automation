@@ -8,6 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
+from bot_app.expense_tracker import list_categories, add_to_notion
 
 # ---------- ENV ----------
 load_dotenv()
@@ -151,6 +152,9 @@ Commands:
 
 /system -- Get system status
 /fans -- Get fan status
+
+/ex -- Add new expense
+/cat -- List expense categories
 """
     )
 
@@ -206,6 +210,29 @@ async def run(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}")
 
 
+# ---------- EXPENSES ----------
+async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /ex [Item Name] [Amount] [Category]\nExample: /ex coffee 54 Food")
+        return
+
+    text = " ".join(context.args)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, add_to_notion, text)
+    await update.message.reply_text(result)
+
+async def cat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, list_categories)
+    await update.message.reply_text(result, parse_mode="Markdown")
+
+
 # ---------- APP ----------
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
@@ -223,6 +250,8 @@ def create_app():
     app.add_handler(CommandHandler("run", run))
     app.add_handler(CommandHandler("system", status))
     app.add_handler(CommandHandler("fans", fans))
+    app.add_handler(CommandHandler("ex", ex_command))
+    app.add_handler(CommandHandler("cat", cat_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
