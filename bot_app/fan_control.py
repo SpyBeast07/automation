@@ -52,18 +52,40 @@ def set_speed(speed):
 def fan_logic():
     temp = get_temp()
 
-    if temp < 45:
-        speed = 30
-    elif temp < 50:
-        speed = 40
-    elif temp < 55:
-        speed = 50
-    elif temp < 60:
-        speed = 60
-    elif temp < 65:
-        speed = 70
+    global LAST_SPEED
+    current_speed = LAST_SPEED if LAST_SPEED is not None else 30
+
+    levels = [
+        (65, 100),
+        (60, 70),
+        (55, 60),
+        (50, 50),
+        (45, 40),
+        (0, 30)
+    ]
+
+    # Find the target speed based purely on temperature
+    target_up = 30
+    for threshold, spd in levels:
+        if temp >= threshold:
+            target_up = spd
+            break
+
+    # Find the minimum speed allowed to drop to (incorporating a 5-degree hysteresis)
+    HYSTERESIS = 5
+    target_down = 30
+    for threshold, spd in levels:
+        if temp >= (threshold - HYSTERESIS):
+            target_down = spd
+            break
+
+    # Decide speed based on current state and thresholds
+    if current_speed < target_up:
+        speed = target_up
+    elif current_speed > target_down:
+        speed = target_down
     else:
-        speed = 100
+        speed = current_speed
 
     changed = set_speed(speed)
 
