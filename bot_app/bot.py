@@ -10,6 +10,7 @@ from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion
 from bot_app.downloader import handle_download
+from ddgs import DDGS
 
 # ---------- ENV ----------
 load_dotenv()
@@ -116,26 +117,90 @@ async def system_monitor(app):
 
 
 # ---------- AI ----------
+def web_search(query):
+    try:
+        results = DDGS().text(query, max_results=3)
+        if not results:
+            return "No results found."
+        
+        formatted_results = []
+        for r in results:
+            formatted_results.append(f"Source: {r.get('href')}\nContent: {r.get('body')}")
+        
+        return "\n\n".join(formatted_results)
+    except Exception as e:
+        return f"Search error: {str(e)}"
+
 async def ask_ai(prompt):
+
+    chat_url = OLLAMA_URL.replace("generate", "chat")
+    
+    tools = [{
+        'type': 'function',
+        'function': {
+            'name': 'web_search',
+            'description': 'Use this tool to get up-to-date information, news, or prices from the internet.',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string', 'description': 'The search keywords'},
+                },
+                'required': ['query'],
+            },
+        },
+    }]
+
+    messages = [
+        {
+            'role': 'system', 
+            'content': 'You are a helpful assistant with web access. If you are asked about current events, prices, or anything you do not know for sure, use the web_search tool.'
+        },
+        {'role': 'user', 'content': prompt}
+    ]
 
     try:
         response = await http_client.post(
-            OLLAMA_URL,
+            chat_url,
             json={
-                "model": "phi3",
-                "prompt": prompt,
+                "model": "qwen2.5:3b",
+                "messages": messages,
+                "tools": tools,
                 "stream": False
             }
         )
 
         response.raise_for_status()
-
         data = response.json()
+        message = data.get("message", {})
 
-        return data.get("response", "No response")
+        # Check for tool calls
+        if message.get("tool_calls"):
+            for tool in message["tool_calls"]:
+                if tool["function"]["name"] == 'web_search':
+                    query = tool["function"]["arguments"]["query"]
+                    
+                    loop = asyncio.get_event_loop()
+                    search_data = await loop.run_in_executor(None, web_search, query)
+                    
+                    messages.append(message)
+                    messages.append({'role': 'tool', 'content': search_data})
+                    
+                    final_response = await http_client.post(
+                        chat_url,
+                        json={
+                            "model": "qwen2.5:3b",
+                            "messages": messages,
+                            "stream": False
+                        }
+                    )
+                    final_response.raise_for_status()
+                    final_data = final_response.json()
+                    return final_data.get("message", {}).get("content", "No response")
+        
+        return message.get("content", "No response")
 
     except Exception as e:
-        return f"AI error: {e}"
+        return f"AI error: {str(e)}"
 
 
 # ---------- START ----------
