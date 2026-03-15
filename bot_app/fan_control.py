@@ -49,10 +49,12 @@ def set_speed(speed):
     return True
 
 
+TEMP_HISTORY = []
+
 def fan_logic():
+    global LAST_SPEED, TEMP_HISTORY
     temp = get_temp()
 
-    global LAST_SPEED
     current_speed = LAST_SPEED if LAST_SPEED is not None else 30
 
     levels = [
@@ -64,10 +66,24 @@ def fan_logic():
         (0, 30)
     ]
 
-    # Find the target speed based purely on temperature
+    # Handle history and temperature smoothing
+    if temp >= 55:
+        # If hot, immediately react and fill history to prevent quick drop-offs
+        eval_temp = temp
+        TEMP_HISTORY = [temp, temp, temp]
+    else:
+        # Otherwise, add to history to calculate rolling average for stability
+        TEMP_HISTORY.append(temp)
+        if len(TEMP_HISTORY) > 3:
+            TEMP_HISTORY.pop(0)
+        
+        # Calculate moving average
+        eval_temp = sum(TEMP_HISTORY) / len(TEMP_HISTORY)
+
+    # Find the target speed based purely on the evaluated smoothed temperature
     target_up = 30
     for threshold, spd in levels:
-        if temp >= threshold:
+        if eval_temp >= threshold:
             target_up = spd
             break
 
@@ -75,7 +91,7 @@ def fan_logic():
     HYSTERESIS = 5
     target_down = 30
     for threshold, spd in levels:
-        if temp >= (threshold - HYSTERESIS):
+        if eval_temp >= (threshold - HYSTERESIS):
             target_down = spd
             break
 
@@ -89,4 +105,5 @@ def fan_logic():
 
     changed = set_speed(speed)
 
+    # Return the *actual* temperature for the notification, but speed based on smoothed temp
     return temp, speed, changed
