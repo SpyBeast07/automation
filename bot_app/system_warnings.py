@@ -32,7 +32,7 @@ def check_system_health():
     disk = psutil.disk_usage("/").percent
     gpu = get_gpu_usage()
     
-    threshold = 80
+    threshold = 90
     
     current_state = {
         "cpu": cpu > threshold,

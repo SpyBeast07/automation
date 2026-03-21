@@ -162,7 +162,7 @@ async def ask_ai(prompt):
         response = await http_client.post(
             chat_url,
             json={
-                "model": "qwen2.5:3b",
+                "model": "qwen2.5-coder:7b",
                 "messages": messages,
                 "tools": tools,
                 "stream": False
@@ -172,6 +172,17 @@ async def ask_ai(prompt):
         response.raise_for_status()
         data = response.json()
         message = data.get("message", {})
+
+        # Fallback for models that output tool choice as raw JSON text
+        content = message.get("content", "").strip()
+        if not message.get("tool_calls") and content.startswith("{") and content.endswith("}"):
+            import json
+            try:
+                parsed = json.loads(content)
+                if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
+                    message["tool_calls"] = [{"function": parsed}]
+            except Exception:
+                pass
 
         # Check for tool calls
         if message.get("tool_calls"):
@@ -188,7 +199,7 @@ async def ask_ai(prompt):
                     final_response = await http_client.post(
                         chat_url,
                         json={
-                            "model": "qwen2.5:3b",
+                            "model": "qwen2.5-coder:7b",
                             "messages": messages,
                             "stream": False
                         }
