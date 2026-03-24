@@ -15,6 +15,14 @@ from ddgs import DDGS
 # ---------- ENV ----------
 load_dotenv()
 
+# Prepend venv/bin to PATH to use local dependencies like yt-dlp
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_current_dir)
+_venv_bin = os.path.join(_project_root, "venv", "bin")
+
+if os.path.isdir(_venv_bin):
+    os.environ["PATH"] = _venv_bin + os.pathsep + os.environ.get("PATH", "")
+
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 AUTHORIZED_USERNAME = os.getenv("AUTHORIZED_USERNAME")
 BASE_DIR = os.getenv("BASE_DIR", "/storage")
