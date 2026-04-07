@@ -27,6 +27,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 AUTHORIZED_USERNAME = os.getenv("AUTHORIZED_USERNAME")
 BASE_DIR = os.getenv("BASE_DIR", "/storage")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Global HTTP client
@@ -170,7 +171,7 @@ async def ask_ai(prompt):
         response = await http_client.post(
             chat_url,
             json={
-                "model": "qwen2.5-coder:7b",
+                "model": OLLAMA_MODEL,
                 "messages": messages,
                 "tools": tools,
                 "stream": False
@@ -207,7 +208,7 @@ async def ask_ai(prompt):
                     final_response = await http_client.post(
                         chat_url,
                         json={
-                            "model": "qwen2.5-coder:7b",
+                            "model": OLLAMA_MODEL,
                             "messages": messages,
                             "stream": False
                         }
