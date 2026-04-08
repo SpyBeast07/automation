@@ -6,7 +6,7 @@ A comprehensive, personal Telegram bot built in Python to help manage your Linux
 
 - **System Monitoring:** Get system status (`/system`), including CPU, memory, and disk usage. The bot also proactively alerts you on high temperatures or low disk space.
 - **Fan Control:** Intelligently controls the system fans (`/fans`) using Nodebook Fan Control (`nbfc`), equipped with rolling averages for quiet cooling at low temperatures and immediate reaction when hot.
-- **Local AI Chat:** Chat securely with an AI powered by `Ollama` running on your local machine (defaulting to `qwen2.5:3b`). It automatically uses `DuckDuckGo` web search if it needs real-time information.
+- **Local AI Chat:** Chat securely with an AI powered by `Ollama` running on your local machine (defaulting to `gemma4:e4b`). It automatically uses `DuckDuckGo` web search if it needs real-time information.
 - **Run Remote Commands:** Execute shell commands directly from your Telegram chat safely using `/run`.
 - **Notion Expense Tracker:** Quickly log items to your Notion expense databases (`/ex coffee 54 Food`), and list categories (`/cat`).
 - **Media Downloader:** Downloads media directly to your machine using `/dl <link>`.
