@@ -9,93 +9,99 @@ def get_fan_status():
         return f"Fan status error: {e}"
 
 
-def get_current_speed():
+def get_nbfc_status():
     try:
         output = subprocess.check_output(["nbfc", "status"]).decode()
+        data = {"temps": {}, "speeds": {}}
+        current_fan = None
 
         for line in output.split("\n"):
-            if "Requested Fan Speed" in line:
-                return int(float(line.split(":")[1].strip()))
-
+            if "Fan #" in line:
+                current_fan = int(line.split("#")[1].strip())
+            elif current_fan is not None:
+                if "Temperature" in line:
+                    data["temps"][current_fan] = float(line.split(":")[1].strip())
+                elif "Requested Fan Speed" in line:
+                    data["speeds"][current_fan] = int(float(line.split(":")[1].strip()))
+        
+        return data
     except:
-        pass
-
-    return None
+        return {"temps": {}, "speeds": {}}
 
 
-LAST_SPEED = get_current_speed()
+def get_current_speeds():
+    return get_nbfc_status()["speeds"]
 
 
-def get_temp():
-    output = subprocess.check_output(["nbfc", "status"]).decode()
-
-    for line in output.split("\n"):
-        if "Temperature" in line:
-            return float(line.split(":")[1].strip())
-
-    return 0
+def get_temps():
+    return get_nbfc_status()["temps"]
 
 
-def set_speed(speed):
-    global LAST_SPEED
+LAST_SPEEDS = get_current_speeds()
 
-    if LAST_SPEED == speed:
+
+def set_speed(speed, fan_index=0):
+    global LAST_SPEEDS
+
+    if LAST_SPEEDS.get(fan_index) == speed:
         return False
 
-    subprocess.run(["nbfc", "set", "-s", str(speed)])
+    subprocess.run(["nbfc", "set", "-f", str(fan_index), "-s", str(speed)])
 
-    LAST_SPEED = speed
+    LAST_SPEEDS[fan_index] = speed
 
     return True
 
 
-TEMP_HISTORY = []
+SHARED_HISTORY = []
 
 def fan_logic():
-    global LAST_SPEED, TEMP_HISTORY
-    temp = get_temp()
+    global LAST_SPEEDS, SHARED_HISTORY
+    temps = get_temps()
+    
+    cpu_temp = temps.get(0, 0)
+    gpu_temp = temps.get(1, 0)
 
-    current_speed = LAST_SPEED if LAST_SPEED is not None else 30
+    # 1. Emergency Thermal Protection
+    if cpu_temp >= 90 or gpu_temp >= 85:
+        set_speed(100, 0)
+        set_speed(100, 1)
+        return f"EMERGENCY ({cpu_temp}/{gpu_temp})", "MAX COOLING (100%)", True
 
+    # 2. Shared Thermal Awareness (Nitro 5 shared heatpipes)
+    shared_temp = max(cpu_temp, gpu_temp)
+    
+    # 3. Weighted Smoothing (Last 5 readings, latest has double weight)
+    SHARED_HISTORY.append(shared_temp)
+    if len(SHARED_HISTORY) > 5:
+        SHARED_HISTORY.pop(0)
+    
+    if len(SHARED_HISTORY) > 1:
+        eval_temp = (sum(SHARED_HISTORY[:-1]) + SHARED_HISTORY[-1] * 2) / (len(SHARED_HISTORY) + 1)
+    else:
+        eval_temp = SHARED_HISTORY[0]
+
+    # 4. Unified Fan Curve for Server-style Operation
     levels = [
-        (65, 100),
-        (60, 70),
-        (55, 60),
-        (50, 50),
-        (45, 40),
-        (0, 30)
+        (80, 100), (75, 85), (68, 70), (60, 55), (50, 40), (40, 30), (0, 25)
     ]
 
-    # Handle history and temperature smoothing
-    if temp >= 55:
-        # If hot, immediately react and fill history to prevent quick drop-offs
-        eval_temp = temp
-        TEMP_HISTORY = [temp, temp, temp]
-    else:
-        # Otherwise, add to history to calculate rolling average for stability
-        TEMP_HISTORY.append(temp)
-        if len(TEMP_HISTORY) > 3:
-            TEMP_HISTORY.pop(0)
-        
-        # Calculate moving average
-        eval_temp = sum(TEMP_HISTORY) / len(TEMP_HISTORY)
-
-    # Find the target speed based purely on the evaluated smoothed temperature
-    target_up = 30
+    # 5. Hysteresis and Speed Decision (Reduced oscillation)
+    HYSTERESIS = 10
+    current_speed = LAST_SPEEDS.get(0, 30) # Assuming fans are near-synchronized
+    
+    target_up = 25
     for threshold, spd in levels:
         if eval_temp >= threshold:
             target_up = spd
             break
 
-    # Find the minimum speed allowed to drop to (incorporating a 5-degree hysteresis)
-    HYSTERESIS = 5
-    target_down = 30
+    target_down = 25
     for threshold, spd in levels:
         if eval_temp >= (threshold - HYSTERESIS):
             target_down = spd
             break
 
-    # Decide speed based on current state and thresholds
     if current_speed < target_up:
         speed = target_up
     elif current_speed > target_down:
@@ -103,7 +109,13 @@ def fan_logic():
     else:
         speed = current_speed
 
-    changed = set_speed(speed)
+    # 6. Synchronized Fan Control (Skips writes if speed is unchanged)
+    changed_0 = set_speed(speed, 0)
+    changed_1 = set_speed(speed, 1)
+    any_changed = changed_0 or changed_1
 
-    # Return the *actual* temperature for the notification, but speed based on smoothed temp
-    return temp, speed, changed
+    # Return summary for bot notification
+    summary_temp = f"CPU: {cpu_temp}, GPU: {gpu_temp} (Smooth: {eval_temp:.1f})"
+    summary_speed = f"Synced: {speed}%"
+    
+    return summary_temp, summary_speed, any_changed
