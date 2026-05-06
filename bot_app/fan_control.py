@@ -115,7 +115,7 @@ def fan_logic():
     any_changed = changed_0 or changed_1
 
     # Return summary for bot notification
-    summary_temp = f"CPU: {cpu_temp}, GPU: {gpu_temp} (Smooth: {eval_temp:.1f})"
-    summary_speed = f"Synced: {speed}%"
+    summary_temp = f"🌡 CPU: {cpu_temp}°C | GPU: {gpu_temp}°C | Smooth: {eval_temp:.1f}°C"
+    summary_speed = f"⚙️ Speed: {speed}%"
     
     return summary_temp, summary_speed, any_changed

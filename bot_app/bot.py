@@ -87,8 +87,8 @@ async def fan_monitor(app):
                 text = f"""
 Fan control triggered:
 
-Temperature: {temp} °C
-Fan Speed Set: {speed} %
+{temp}
+{speed}
 """
 
                 await app.bot.send_message(
