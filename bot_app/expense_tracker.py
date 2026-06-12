@@ -1,6 +1,7 @@
 import os
 import requests
 import re
+import difflib
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -17,23 +18,95 @@ HEADERS = {
     "Notion-Version": "2022-06-28"
 }
 
-def get_or_create_category_id(category_name):
+# Module-level cache for Month Database ID
+MONTH_DB_ID = None
+
+def get_month_db_id():
+    """Retrieves the Month Database ID dynamically from the Expense Database properties."""
+    global MONTH_DB_ID
+    if MONTH_DB_ID:
+        return MONTH_DB_ID
+    
+    url = f"https://api.notion.com/v1/databases/{EXPENSE_DB_ID}"
+    resp = requests.get(url, headers=HEADERS)
+    if resp.status_code == 200:
+        month_prop = resp.json().get("properties", {}).get("Month", {})
+        if month_prop.get("type") == "relation":
+            MONTH_DB_ID = month_prop.get("relation", {}).get("database_id")
+            return MONTH_DB_ID
+    return None
+
+def get_or_create_month_page_id(month_name):
+    """Checks if a month page exists in the Month Database; creates it if not."""
+    month_db_id = get_month_db_id()
+    if not month_db_id:
+        return None
+        
+    # Query for the page with the title matching month_name
+    query_url = f"https://api.notion.com/v1/databases/{month_db_id}/query"
+    query_data = {
+        "filter": {
+            "property": "Name",
+            "title": {
+                "equals": month_name
+            }
+        }
+    }
+    
+    resp = requests.post(query_url, headers=HEADERS, json=query_data)
+    if resp.status_code == 200:
+        results = resp.json().get("results", [])
+        if results:
+            return results[0]["id"]
+            
+    # Create the month page if it doesn't exist
+    create_url = "https://api.notion.com/v1/pages"
+    payload = {
+        "parent": {"database_id": month_db_id},
+        "properties": {
+            "Name": {"title": [{"text": {"content": month_name}}]}
+        }
+    }
+    create_resp = requests.post(create_url, headers=HEADERS, json=payload)
+    if create_resp.status_code == 200:
+        return create_resp.json()["id"]
+    return None
+
+def get_nearest_category(category_name):
+    """Fetches all categories and finds the closest matching one using SequenceMatcher."""
     url = f"https://api.notion.com/v1/databases/{CATEGORY_DB_ID}/query"
-    query_data = {"filter": {"property": "Name", "title": {"equals": category_name}}}
-    response = requests.post(url, headers=HEADERS, json=query_data)
+    response = requests.post(url, headers=HEADERS)
     results = response.json().get("results", [])
     
-    if results:
-        return results[0]["id"], False
-    else:
-        # Create new category
-        create_url = "https://api.notion.com/v1/pages"
-        payload = {
-            "parent": {"database_id": CATEGORY_DB_ID},
-            "properties": {"Name": {"title": [{"text": {"content": category_name}}]}}
-        }
-        res = requests.post(create_url, headers=HEADERS, json=payload)
-        return res.json()["id"], True
+    categories = []
+    for page in results:
+        title_props = page["properties"].get("Category", {}).get("title", [])
+        if title_props:
+            categories.append({
+                "id": page["id"],
+                "name": title_props[0]["text"]["content"]
+            })
+            
+    if not categories:
+        return None, None
+        
+    # Check for exact case-insensitive match first
+    for cat in categories:
+        if cat["name"].strip().lower() == category_name.strip().lower():
+            return cat["id"], cat["name"]
+            
+    # Fuzzy match using difflib
+    best_match = None
+    best_score = -1.0
+    for cat in categories:
+        score = difflib.SequenceMatcher(None, category_name.lower(), cat["name"].lower()).ratio()
+        if score > best_score:
+            best_score = score
+            best_match = cat
+            
+    if best_match:
+        return best_match["id"], best_match["name"]
+    return None, None
 
 def list_categories():
     """Fetches and displays all available categories from the Category DB."""
@@ -43,8 +116,8 @@ def list_categories():
     
     categories = []
     for page in results:
-        # Get the title from the 'Name' property of each page
-        title_props = page["properties"].get("Name", {}).get("title", [])
+        # Get the title from the 'Category' property of each page
+        title_props = page["properties"].get("Category", {}).get("title", [])
         if title_props:
             categories.append(title_props[0]["text"]["content"])
     
@@ -66,10 +139,20 @@ def add_to_notion(text):
 
     item_name = match.group(1).strip()
     amount = float(match.group(2))
-    user_cat_name = match.group(3).strip() if match.group(3) else "Home"
+    user_cat_name = match.group(3).strip() if match.group(3) else "Food & Dining"
 
-    selected_cat_id, was_created = get_or_create_category_id(user_cat_name)
-    today = datetime.now().strftime("%Y-%m-%d")
+    selected_cat_id, actual_cat_name = get_nearest_category(user_cat_name)
+    if not selected_cat_id:
+        return f"❌ Error: Could not find any category in Category Database."
+
+    # Current date and month formatting
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    current_month_name = now.strftime("%B %Y") # e.g. "June 2026"
+
+    month_page_id = get_or_create_month_page_id(current_month_name)
+    if not month_page_id:
+        return f"❌ Error: Could not find or create Month page for '{current_month_name}'."
 
     payload = {
         "parent": {"database_id": EXPENSE_DB_ID},
@@ -77,6 +160,7 @@ def add_to_notion(text):
             "Name": {"title": [{"text": {"content": item_name}}]},
             "Amount": {"number": amount},
             "Date": {"date": {"start": today}},
+            "Month": {"relation": [{"id": month_page_id}]},
             "Category": {"relation": [{"id": selected_cat_id}]}
         }
     }
@@ -84,7 +168,9 @@ def add_to_notion(text):
     resp = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=payload)
     
     if resp.status_code == 200:
-        notice = " (New category created!)" if was_created else ""
-        return f"✅ Logged!\n📝 {item_name}\n💰 {amount}\n📂 {user_cat_name}{notice}"
+        notice = ""
+        if actual_cat_name.lower() != user_cat_name.lower():
+            notice = f" (matched to nearest category: {actual_cat_name})"
+        return f"✅ Logged!\n📝 {item_name}\n💰 {amount}\n📂 {actual_cat_name}{notice}"
     else:
         return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}"
