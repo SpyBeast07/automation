@@ -190,6 +190,13 @@ def add_to_notion(text):
 
     payload = {
         "parent": {"database_id": EXPENSE_DB_ID},
+        "icon": {
+            "type": "icon",
+            "icon": {
+                "name": "arrow-up-line",
+                "color": "gray"
+            }
+        },
         "properties": {
             "Name": {"title": [{"text": {"content": item_name}}]},
             "Amount": {"number": amount},
@@ -237,6 +244,13 @@ def add_income_to_notion(text):
 
     payload = {
         "parent": {"database_id": INCOME_DB_ID},
+        "icon": {
+            "type": "icon",
+            "icon": {
+                "name": "arrow-down-line",
+                "color": "gray"
+            }
+        },
         "properties": {
             "Name": {"title": [{"text": {"content": item_name}}]},
             "Amount": {"number": amount},
