@@ -10,6 +10,7 @@ load_dotenv()
 # --- CONFIGURATION ---
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 EXPENSE_DB_ID = os.getenv("EXPENSE_DB_ID")
+INCOME_DB_ID = os.getenv("INCOME_DB_ID")
 CATEGORY_DB_ID = os.getenv("CATEGORY_DB_ID")
 
 HEADERS = {
@@ -108,6 +109,39 @@ def get_nearest_category(category_name):
         return best_match["id"], best_match["name"]
     return None, None
 
+def get_nearest_source(source_name):
+    """Fetches available sources options from Income DB schema and finds the closest matching one."""
+    url = f"https://api.notion.com/v1/databases/{INCOME_DB_ID}"
+    resp = requests.get(url, headers=HEADERS)
+    if resp.status_code != 200:
+        return None
+        
+    source_prop = resp.json().get("properties", {}).get("Source", {})
+    if source_prop.get("type") != "select":
+        return None
+        
+    options = source_prop.get("select", {}).get("options", [])
+    if not options:
+        return None
+        
+    # Check for exact case-insensitive match first
+    for opt in options:
+        if opt["name"].strip().lower() == source_name.strip().lower():
+            return opt["name"]
+            
+    # Fuzzy match using difflib
+    best_match = None
+    best_score = -1.0
+    for opt in options:
+        score = difflib.SequenceMatcher(None, source_name.lower(), opt["name"].lower()).ratio()
+        if score > best_score:
+            best_score = score
+            best_match = opt
+            
+    if best_match:
+        return best_match["name"]
+    return None
+
 def list_categories():
     """Fetches and displays all available categories from the Category DB."""
     url = f"https://api.notion.com/v1/databases/{CATEGORY_DB_ID}/query"
@@ -172,5 +206,52 @@ def add_to_notion(text):
         if actual_cat_name.lower() != user_cat_name.lower():
             notice = f" (matched to nearest category: {actual_cat_name})"
         return f"✅ Logged!\n📝 {item_name}\n💰 {amount}\n📂 {actual_cat_name}{notice}"
+    else:
+        return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}"
+
+def add_income_to_notion(text):
+    text = text.strip()
+    
+    # regex looks for [Name] [Last Number] [Optional Source Word]
+    match = re.search(r"^(.*?)\s+(\d+(?:\.\d+)?)(?:\s+([a-zA-Z\s]+))?$", text)
+
+    if not match:
+        return "⚠️ Format error! Use: /in [Item Name] [Amount] [Source]\nExample: /in TCS 14500 Salary"
+
+    item_name = match.group(1).strip()
+    amount = float(match.group(2))
+    user_source_name = match.group(3).strip() if match.group(3) else "Salary"
+
+    actual_source_name = get_nearest_source(user_source_name)
+    if not actual_source_name:
+        return f"❌ Error: Could not find closest source in Database options."
+
+    # Current date and month formatting
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    current_month_name = now.strftime("%B %Y") # e.g. "June 2026"
+
+    month_page_id = get_or_create_month_page_id(current_month_name)
+    if not month_page_id:
+        return f"❌ Error: Could not find or create Month page for '{current_month_name}'."
+
+    payload = {
+        "parent": {"database_id": INCOME_DB_ID},
+        "properties": {
+            "Name": {"title": [{"text": {"content": item_name}}]},
+            "Amount": {"number": amount},
+            "Date": {"date": {"start": today}},
+            "Month": {"relation": [{"id": month_page_id}]},
+            "Source": {"select": {"name": actual_source_name}}
+        }
+    }
+
+    resp = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=payload)
+    
+    if resp.status_code == 200:
+        notice = ""
+        if actual_source_name.lower() != user_source_name.lower():
+            notice = f" (matched to nearest source: {actual_source_name})"
+        return f"✅ Logged Income!\n📝 {item_name}\n💰 {amount}\n📂 {actual_source_name}{notice}"
     else:
         return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}"
