@@ -9,24 +9,55 @@ def get_fan_status():
         return f"Fan status error: {e}"
 
 
+def _parse_kv(line):
+    """Parse a 'Key : Value' line from nbfc output."""
+    if ":" not in line:
+        return None, None
+    key, _, value = line.partition(":")
+    return key.strip().lower(), value.strip()
+
+
 def get_nbfc_status():
     try:
-        output = subprocess.check_output(["nbfc", "status"]).decode()
-        data = {"temps": {}, "speeds": {}}
-        current_fan = None
-
-        for line in output.split("\n"):
-            if "Fan #" in line:
-                current_fan = int(line.split("#")[1].strip())
-            elif current_fan is not None:
-                if "Temperature" in line:
-                    data["temps"][current_fan] = float(line.split(":")[1].strip())
-                elif "Requested Fan Speed" in line:
-                    data["speeds"][current_fan] = int(float(line.split(":")[1].strip()))
-        
-        return data
-    except:
+        output = subprocess.check_output(
+            ["nbfc", "status"], stderr=subprocess.STDOUT
+        ).decode()
+    except FileNotFoundError:
+        print("Fan control error: 'nbfc' command not found")
         return {"temps": {}, "speeds": {}}
+    except subprocess.CalledProcessError as e:
+        print(f"Fan control error: nbfc exited with code {e.returncode}: {e.output}")
+        return {"temps": {}, "speeds": {}}
+    except Exception as e:
+        print(f"Fan control error: {e}")
+        return {"temps": {}, "speeds": {}}
+
+    data = {"temps": {}, "speeds": {}}
+    fan_index = -1
+
+    for line in output.splitlines():
+        key, value = _parse_kv(line)
+
+        if key is None or value == "":
+            continue
+
+        # A new fan block starts with "fan display name"
+        if "fan" in key and "name" in key:
+            fan_index += 1
+
+        elif fan_index >= 0 and key == "temperature":
+            try:
+                data["temps"][fan_index] = float(value)
+            except ValueError:
+                print(f"Fan control warning: could not parse temperature '{value}'")
+
+        elif fan_index >= 0 and "current fan speed" in key:
+            try:
+                data["speeds"][fan_index] = int(float(value))
+            except ValueError:
+                print(f"Fan control warning: could not parse speed '{value}'")
+
+    return data
 
 
 def get_current_speeds():
