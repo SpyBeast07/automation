@@ -4,6 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.request import HTTPXRequest
 
 from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
@@ -371,7 +372,15 @@ def create_app():
     if not TOKEN:
         raise ValueError("TELEGRAM_TOKEN not found")
 
-    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
+    # Use custom HTTPXRequest with increased timeouts to prevent NetworkError/ReadError
+    request_config = HTTPXRequest(
+        connect_timeout=20.0,
+        read_timeout=20.0,
+        write_timeout=20.0,
+        pool_timeout=5.0
+    )
+
+    app = ApplicationBuilder().token(TOKEN).request(request_config).post_init(on_startup).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("run", run))
