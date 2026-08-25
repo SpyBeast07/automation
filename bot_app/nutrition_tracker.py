@@ -16,7 +16,7 @@ DAYS_DB_ID = os.getenv("DAYS_DB_ID")
 
 MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"]
 CURRENT_GOALS_NAME = "Current Goals"
-ANALYTICS_COLUMNS = ["Calories%", "Protein%", "Carbs%", "Fats%"]
+ANALYTICS_COLUMNS = ["Calories %", "Protein %", "Carbs %", "Fat %"]
 
 # Module-level cache for Goals Database ID
 GOALS_DB_ID = None
@@ -246,21 +246,28 @@ def get_or_create_today_page_id(day_title, today_iso):
     return None
 
 
-def _extract_number(prop):
-    """Extracts a numeric value from a Notion property (number, formula, or rollup)."""
-    prop_type = prop.get("type")
+def _extract_value(prop):
+    """Extracts a value from a Notion property (number, string, formula, or rollup).
 
-    if prop_type == "number":
-        return prop.get("number")
-    if prop_type == "formula":
-        return prop.get("formula", {}).get("number")
-    if prop_type == "rollup":
-        return prop.get("rollup", {}).get("number")
-    return None
+    Returns (value, is_number) or (None, False) if unavailable.
+    """
+    prop_type = prop.get("type")
+    value = None
+
+    if prop_type in ("number", "string"):
+        value = prop.get(prop_type)
+    elif prop_type == "formula":
+        formula = prop.get("formula", {})
+        value = formula.get("number", formula.get("string"))
+    elif prop_type == "rollup":
+        rollup = prop.get("rollup", {})
+        value = rollup.get("number", rollup.get("string"))
+
+    return value, isinstance(value, (int, float))
 
 
 def get_day_analytics(day_page_id):
-    """Fetches the Calories%, Protein%, Carbs%, Fats% columns from a Day page.
+    """Fetches the Calories %, Protein %, Carbs %, Fat % columns from a Day page.
 
     Returns an analytics message string, or None if unavailable.
     """
@@ -272,9 +279,11 @@ def get_day_analytics(day_page_id):
 
     lines = []
     for col in ANALYTICS_COLUMNS:
-        value = _extract_number(props.get(col, {}))
-        if value is not None:
+        value, is_number = _extract_value(props.get(col, {}))
+        if is_number:
             lines.append(f"{col} {value:g}%")
+        elif value:
+            lines.append(value)
         else:
             lines.append(f"{col} —")
 
