@@ -331,6 +331,40 @@ def _parse_eat(text):
     return food_name, quantity, meal
 
 
+def get_food_nutrition(food_id, quantity):
+    """Fetches a food's nutrition and scales it to the logged quantity.
+
+    Returns a formatted string like '🔥 220 kcal | 💪 4g P | 🍚 35g C | 🥑 10g F',
+    or None if unavailable.
+    """
+    resp = requests.get(f"https://api.notion.com/v1/pages/{food_id}", headers=HEADERS)
+    if resp.status_code != 200:
+        return None
+
+    props = resp.json().get("properties", {})
+
+    base_qty = props.get("Base Quantity", {}).get("number")
+    if not base_qty:
+        base_qty = 100
+
+    factor = quantity / base_qty
+    parts = []
+    for label, key, unit in [
+        ("🔥", "Calories", "kcal"),
+        ("💪", "Protein", "g"),
+        ("🍚", "Carbs", "g"),
+        ("🥑", "Fat", "g"),
+    ]:
+        value = props.get(key, {}).get("number")
+        if value is not None:
+            scaled = value * factor
+            parts.append(f"{label} {scaled:g} {unit}")
+        else:
+            parts.append(f"{label} —")
+
+    return " | ".join(parts)
+
+
 def create_meal_log(food_name, food, quantity, meal):
     """Creates a Meal Log entry for the given food.
 
@@ -367,6 +401,10 @@ def create_meal_log(food_name, food, quantity, meal):
             notice = f" (matched to nearest food: {actual_food_name})"
 
         msg = f"✅ Logged!\n🍽️ {actual_food_name}{notice}\n⚖️ {quantity:g}\n🍳 {meal}"
+
+        nutrition = get_food_nutrition(food["id"], quantity)
+        if nutrition:
+            msg += f"\n{nutrition}"
 
         # Formulas/rollups can take a moment to recompute after the new log
         analytics = None
