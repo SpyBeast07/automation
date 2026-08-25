@@ -14,6 +14,10 @@ FOOD_DB_ID = os.getenv("FOOD_DB_ID")
 DAYS_DB_ID = os.getenv("DAYS_DB_ID")
 
 MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"]
+CURRENT_GOALS_NAME = "Current Goals"
+
+# Module-level cache for Goals Database ID
+GOALS_DB_ID = None
 
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -74,7 +78,51 @@ def get_nearest_food(food_name):
     return None, None
 
 
-def get_or_create_today_page_id(today):
+def get_goals_db_id():
+    """Retrieves the Goals Database ID dynamically from the Days Database properties."""
+    global GOALS_DB_ID
+    if GOALS_DB_ID:
+        return GOALS_DB_ID
+
+    url = f"https://api.notion.com/v1/databases/{DAYS_DB_ID}"
+    resp = requests.get(url, headers=HEADERS)
+    if resp.status_code == 200:
+        goals_prop = resp.json().get("properties", {}).get("Goals", {})
+        if goals_prop.get("type") == "relation":
+            GOALS_DB_ID = goals_prop.get("relation", {}).get("database_id")
+            return GOALS_DB_ID
+    return None
+
+
+def get_current_goals_page_id():
+    """Finds the 'Current Goals' page in the Goals Database."""
+    goals_db_id = get_goals_db_id()
+    if not goals_db_id:
+        return None
+
+    title_prop = get_title_prop_name(goals_db_id)
+    if not title_prop:
+        return None
+
+    query_url = f"https://api.notion.com/v1/databases/{goals_db_id}/query"
+    query_data = {
+        "filter": {
+            "property": title_prop,
+            "title": {
+                "equals": CURRENT_GOALS_NAME
+            }
+        }
+    }
+
+    resp = requests.post(query_url, headers=HEADERS, json=query_data)
+    if resp.status_code == 200:
+        results = resp.json().get("results", [])
+        if results:
+            return results[0]["id"]
+    return None
+
+
+def get_or_create_today_page_id(day_title, today_iso):
     """Checks if a Day page exists for today; creates it if not."""
     title_prop = get_title_prop_name(DAYS_DB_ID)
     if not title_prop:
@@ -86,7 +134,7 @@ def get_or_create_today_page_id(today):
         "filter": {
             "property": title_prop,
             "title": {
-                "equals": today
+                "equals": day_title
             }
         }
     }
@@ -97,13 +145,21 @@ def get_or_create_today_page_id(today):
         if results:
             return results[0]["id"]
 
-    # Create the Day page if it doesn't exist
+    # Create the Day page if it doesn't exist, with Date and Current Goals pre-filled
+    current_goals_page_id = get_current_goals_page_id()
+
+    properties = {
+        title_prop: {"title": [{"text": {"content": day_title}}]},
+        "Date": {"date": {"start": today_iso}}
+    }
+
+    if current_goals_page_id:
+        properties["Goals"] = {"relation": [{"id": current_goals_page_id}]}
+
     create_url = "https://api.notion.com/v1/pages"
     payload = {
         "parent": {"database_id": DAYS_DB_ID},
-        "properties": {
-            title_prop: {"title": [{"text": {"content": today}}]}
-        }
+        "properties": properties
     }
     create_resp = requests.post(create_url, headers=HEADERS, json=payload)
     if create_resp.status_code == 200:
@@ -156,7 +212,7 @@ def log_food(text):
     today_iso = now.strftime("%Y-%m-%d")       # for the Date property
     day_title = now.strftime("%b %d, %Y")      # for the Days page title, e.g. "Aug 25, 2026"
 
-    day_page_id = get_or_create_today_page_id(day_title)
+    day_page_id = get_or_create_today_page_id(day_title, today_iso)
     if not day_page_id:
         return f"❌ Error: Could not find or create Day page for '{day_title}'."
 
