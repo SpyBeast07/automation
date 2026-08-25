@@ -243,13 +243,13 @@ async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
     result, selection, analytics = await loop.run_in_executor(None, log_food, text)
 
-    await update.message.reply_text(result)
-
     if analytics:
+        await update.message.reply_text(result)
         await update.message.reply_text(analytics)
         return
 
     if not selection:
+        await update.message.reply_text(result)
         return
 
     keyboard = [
