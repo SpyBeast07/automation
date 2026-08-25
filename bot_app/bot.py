@@ -9,6 +9,7 @@ from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
+from bot_app.nutrition_tracker import log_food
 
 # ---------- ENV ----------
 load_dotenv()
@@ -131,6 +132,8 @@ Commands:
 /in -- Add new income
 /ex -- Add new expense
 /cat -- List expense categories
+
+/eat <food> <qty> [meal] -- Log food
 """
 
 
@@ -226,6 +229,21 @@ async def cat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result, parse_mode="Markdown")
 
 
+# ---------- NUTRITION ----------
+async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /eat [Food Name] [Quantity] [Optional Meal]\nExample: /eat Paneer 150 Snacks")
+        return
+
+    text = " ".join(context.args)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, log_food, text)
+    await update.message.reply_text(result)
+
+
 # ---------- APP ----------
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
@@ -254,6 +272,7 @@ def create_app():
     app.add_handler(CommandHandler("ex", ex_command))
     app.add_handler(CommandHandler("in", in_command))
     app.add_handler(CommandHandler("cat", cat_command))
+    app.add_handler(CommandHandler("eat", eat_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
