@@ -13,7 +13,7 @@ MEAL_LOG_DB_ID = os.getenv("MEAL_LOG_DB_ID")
 FOOD_DB_ID = os.getenv("FOOD_DB_ID")
 DAYS_DB_ID = os.getenv("DAYS_DB_ID")
 
-MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"]
+MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"]
 CURRENT_GOALS_NAME = "Current Goals"
 
 # Module-level cache for Goals Database ID
