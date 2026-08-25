@@ -59,19 +59,25 @@ def get_all_foods():
 
 
 def _food_score(query, name):
-    """Scores how well a query matches a food name. Higher is better."""
+    """Scores how well a query matches a food name. Higher is better.
+
+    Names made up of only the matching words score highest;
+    extra non-matching words lower the score.
+    """
     q = query.lower().strip()
     n = name.lower().strip()
 
     if q == n:
-        return 4.0
+        return 5.0
 
     q_words = set(q.split())
     n_words = set(n.split())
 
     # Any whole word matches, e.g. "paneer" matches "Paneer Butter Masala"
     if q_words & n_words:
-        return 3.0
+        # Ratio of matched words: 1.0 means the name has no extra words
+        overlap = len(q_words & n_words) / max(len(q_words), len(n_words))
+        return 3.0 + overlap
 
     # Partial word match, e.g. "paneers" matches "paneer"
     for qw in q_words:
@@ -100,7 +106,11 @@ def find_food_candidates(food_name):
     if not foods:
         return None, []
 
-    scored = sorted(foods, key=lambda f: _food_score(food_name, f["name"]), reverse=True)
+    scored = sorted(
+        foods,
+        key=lambda f: (_food_score(food_name, f["name"]), -len(f["name"].split())),
+        reverse=True
+    )
 
     best = scored[0] if _food_score(food_name, scored[0]["name"]) >= CONFIDENT_SCORE else None
     return best, scored[:MAX_OPTIONS]
