@@ -1,6 +1,6 @@
 # Telegram AI Automation Bot
 
-A comprehensive, personal Telegram bot built in Python to help manage your Linux system, track expenses via Notion, download media, and intelligently control laptop fans (`nbfc`).
+A comprehensive, personal Telegram bot built in Python to help manage your Linux system, track expenses via Notion, and intelligently control laptop fans (`nbfc`).
 
 ## Features
 
@@ -8,7 +8,6 @@ A comprehensive, personal Telegram bot built in Python to help manage your Linux
 - **Fan Control:** Intelligently controls the system fans (`/fans`) using Nodebook Fan Control (`nbfc`), equipped with rolling averages for quiet cooling at low temperatures and immediate reaction when hot.
 - **Run Remote Commands:** Execute shell commands directly from your Telegram chat safely using `/run`.
 - **Notion Expense Tracker:** Quickly log items to your Notion expense databases (`/ex coffee 54 Food`), and list categories (`/cat`).
-- **Media Downloader:** Downloads media directly to your machine using `/dl <link>`.
 - **Restricted Access:** Hardcoded username authorization prevents other users from interacting with the bot.
 
 ## Prerequisites
@@ -35,7 +34,7 @@ Ensure you have the following installed on your host machine:
 
 3. **Install Dependencies:**
    ```bash
-   pip install python-telegram-bot python-dotenv psutil requests yt-dlp
+   pip install python-telegram-bot python-dotenv psutil requests
    ```
 
 4. **Configuration:**
@@ -50,8 +49,7 @@ Ensure you have the following installed on your host machine:
     - `AUTHORIZED_USERNAME`: Your exact Telegram username (without the `@`) to authorize commands.
     - `BASE_DIR`: Base directory for running shell commands.
    - `TELEGRAM_CHAT_ID`: The ID of your chat (for proactive fan/system alerts).
-   - Notion Credentials (`NOTION_TOKEN`, `EXPENSE_DB_ID`, `CATEGORY_DB_ID`) for the tracker to work.
-   - `DOWNLOAD_DIR`: Where `/dl` should save files.
+    - Notion Credentials (`NOTION_TOKEN`, `EXPENSE_DB_ID`, `CATEGORY_DB_ID`) for the tracker to work.
 
 5. **Running the Bot Manually:**
    ```bash
@@ -108,5 +106,4 @@ To keep the bot running automatically in the background, you can set it up as a 
 | `/fans`           | Check current fan speeds and temperatures. |
 | `/ex <item> <amt> <cat>`| Add an expense to Notion. |
 | `/cat`            | List available categories from Notion database. |
-| `/dl <link>`      | Download media to the configured `DOWNLOAD_DIR`. |
 | `(Any Text)`      | Sends the list of available commands. |

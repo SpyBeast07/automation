@@ -2,5 +2,3 @@ python-telegram-bot
 python-dotenv
 psutil
 requests
-yt-dlp
-gallery-dl
