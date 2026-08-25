@@ -122,24 +122,14 @@ def guess_meal():
 
 
 def get_nearest_meal(meal_name):
-    """Validates the given meal name against known meal options."""
+    """Finds the closest matching meal option out of the 4 fixed meals."""
     # Check for exact case-insensitive match first
     for meal in MEALS:
         if meal.strip().lower() == meal_name.strip().lower():
             return meal
 
-    # Fuzzy match using difflib
-    best_match = None
-    best_score = -1.0
-    for meal in MEALS:
-        score = difflib.SequenceMatcher(None, meal_name.lower(), meal.lower()).ratio()
-        if score > best_score:
-            best_score = score
-            best_match = meal
-
-    if best_match:
-        return best_match
-    return None
+    # Fuzzy match using difflib - always picks the closest of the 4
+    return max(MEALS, key=lambda meal: difflib.SequenceMatcher(None, meal_name.lower(), meal.lower()).ratio())
 
 
 def log_food(text):
@@ -160,22 +150,21 @@ def log_food(text):
         return f"❌ Error: Could not find '{food_name}' in the Food Database."
 
     meal = get_nearest_meal(user_meal) if user_meal else guess_meal()
-    if not meal:
-        return f"❌ Error: Unknown meal '{user_meal}'. Options: {', '.join(MEALS)}."
 
     # Current date formatting
     now = datetime.now()
-    today = now.strftime("%Y-%m-%d")
+    today_iso = now.strftime("%Y-%m-%d")       # for the Date property
+    day_title = now.strftime("%b %d, %Y")      # for the Days page title, e.g. "Aug 25, 2026"
 
-    day_page_id = get_or_create_today_page_id(today)
+    day_page_id = get_or_create_today_page_id(day_title)
     if not day_page_id:
-        return f"❌ Error: Could not find or create Day page for '{today}'."
+        return f"❌ Error: Could not find or create Day page for '{day_title}'."
 
     payload = {
         "parent": {"database_id": MEAL_LOG_DB_ID},
         "properties": {
             "Entry": {"title": [{"text": {"content": f"{actual_food_name} {quantity:g}g"}}]},
-            "Date": {"date": {"start": today}},
+            "Date": {"date": {"start": today_iso}},
             "Meal": {"select": {"name": meal}},
             "Food": {"relation": [{"id": selected_food_id}]},
             "Quantity": {"number": quantity},
