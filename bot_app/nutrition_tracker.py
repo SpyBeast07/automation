@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import difflib
 import requests
 from datetime import datetime
@@ -37,25 +38,60 @@ def get_title_prop_name(db_id):
     return None
 
 
-def get_all_foods():
-    """Fetches all foods from the Food Database."""
+# Cache of the full food list to avoid re-fetching huge databases on every /eat
+FOODS_CACHE = {"foods": None, "ts": 0}
+FOODS_CACHE_TTL = 600  # seconds
+
+
+def fetch_all_foods():
+    """Fetches every food from the Food Database, paginating through all results."""
     title_prop = get_title_prop_name(FOOD_DB_ID)
     if not title_prop:
         return []
 
     url = f"https://api.notion.com/v1/databases/{FOOD_DB_ID}/query"
-    response = requests.post(url, headers=HEADERS)
-    results = response.json().get("results", [])
+    body = {"page_size": 100}
 
     foods = []
-    for page in results:
-        title_props = page["properties"].get(title_prop, {}).get("title", [])
-        if title_props:
-            foods.append({
-                "id": page["id"],
-                "name": title_props[0]["text"]["content"]
-            })
+    while True:
+        response = requests.post(url, headers=HEADERS, json=body)
+        data = response.json()
+        results = data.get("results", [])
+
+        for page in results:
+            title_props = page["properties"].get(title_prop, {}).get("title", [])
+            if title_props:
+                # Join all title chunks to get the full food name
+                full_name = " ".join(part["text"]["content"] for part in title_props).strip()
+                foods.append({
+                    "id": page["id"],
+                    "name": full_name
+                })
+
+        # Notion returns at most 100 pages per request; keep fetching until done
+        if not data.get("has_more"):
+            break
+        body["start_cursor"] = data.get("next_cursor")
+
     return foods
+
+
+def get_all_foods():
+    """Returns the full food list, using a time-based cache for large databases."""
+    if FOODS_CACHE["foods"] is None or time.time() - FOODS_CACHE["ts"] > FOODS_CACHE_TTL:
+        foods = fetch_all_foods()
+        if foods:
+            FOODS_CACHE["foods"] = foods
+            FOODS_CACHE["ts"] = time.time()
+        return foods
+    return FOODS_CACHE["foods"]
+
+
+def _normalize(text):
+    """Lowercases and strips punctuation/extra spaces for robust comparison."""
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _food_score(query, name):
@@ -64,8 +100,8 @@ def _food_score(query, name):
     Names made up of only the matching words score highest;
     extra non-matching words lower the score.
     """
-    q = query.lower().strip()
-    n = name.lower().strip()
+    q = _normalize(query)
+    n = _normalize(name)
 
     if q == n:
         return 5.0
@@ -82,7 +118,7 @@ def _food_score(query, name):
     # Partial word match, e.g. "paneers" matches "paneer"
     for qw in q_words:
         for nw in n_words:
-            if qw in nw or nw in qw:
+            if len(qw) >= 4 and len(nw) >= 4 and (qw in nw or nw in qw):
                 return 2.0
 
     return difflib.SequenceMatcher(None, q, n).ratio()
@@ -91,6 +127,7 @@ def _food_score(query, name):
 # Only auto-log when the name matches exactly or is made up of only the
 # matching words (no extra words). Anything else shows selection options.
 CONFIDENT_SCORE = 4.0
+MIN_OPTION_SCORE = 1.5
 MAX_OPTIONS = 5
 
 # Pending food selections awaiting user confirmation: {key: {...}}
@@ -115,7 +152,8 @@ def find_food_candidates(food_name):
     )
 
     best = scored[0] if _food_score(food_name, scored[0]["name"]) >= CONFIDENT_SCORE else None
-    return best, scored[:MAX_OPTIONS]
+    options = [f for f in scored[:MAX_OPTIONS] if _food_score(food_name, f["name"]) >= MIN_OPTION_SCORE]
+    return best, options
 
 
 def get_goals_db_id():
@@ -308,6 +346,7 @@ def log_food(text):
     }
 
     msg = f"🤔 No confident match found for '{food_name}'. Select the right food:\n"
+    msg += "\n".join(f"{i + 1}. {opt['name']}" for i, opt in enumerate(options))
     return msg, {"key": key, "options": options}
 
 
