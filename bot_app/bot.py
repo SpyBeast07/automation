@@ -1,15 +1,15 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 
 from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
-from bot_app.nutrition_tracker import log_food
+from bot_app.nutrition_tracker import log_food, consume_food_selection
 
 # ---------- ENV ----------
 load_dotenv()
@@ -240,8 +240,37 @@ async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = " ".join(context.args)
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, log_food, text)
-    await update.message.reply_text(result)
+    result, selection = await loop.run_in_executor(None, log_food, text)
+
+    if not selection:
+        await update.message.reply_text(result)
+        return
+
+    keyboard = [
+        [InlineKeyboardButton(opt["name"], callback_data=f"eat:{selection['key']}:{i}")]
+        for i, opt in enumerate(selection["options"])
+    ]
+    await update.message.reply_text(result, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def on_eat_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    if not is_authorized(update):
+        await query.answer("Not authorized.")
+        return
+
+    _, key, index = query.data.split(":")
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, consume_food_selection, key, int(index))
+
+    if result is None:
+        await query.answer("Selection expired. Please use /eat again.")
+        return
+
+    await query.answer()
+    await query.edit_message_text(result)
 
 
 # ---------- APP ----------
@@ -273,6 +302,7 @@ def create_app():
     app.add_handler(CommandHandler("in", in_command))
     app.add_handler(CommandHandler("cat", cat_command))
     app.add_handler(CommandHandler("eat", eat_command))
+    app.add_handler(CallbackQueryHandler(on_eat_selection, pattern="^eat:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
