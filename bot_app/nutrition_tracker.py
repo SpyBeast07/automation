@@ -16,6 +16,7 @@ DAYS_DB_ID = os.getenv("DAYS_DB_ID")
 
 MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"]
 CURRENT_GOALS_NAME = "Current Goals"
+ANALYTICS_COLUMNS = ["Calories%", "Protein%", "Carbs%", "Fats%"]
 
 # Module-level cache for Goals Database ID
 GOALS_DB_ID = None
@@ -245,6 +246,45 @@ def get_or_create_today_page_id(day_title, today_iso):
     return None
 
 
+def _extract_number(prop):
+    """Extracts a numeric value from a Notion property (number, formula, or rollup)."""
+    prop_type = prop.get("type")
+
+    if prop_type == "number":
+        return prop.get("number")
+    if prop_type == "formula":
+        return prop.get("formula", {}).get("number")
+    if prop_type == "rollup":
+        return prop.get("rollup", {}).get("number")
+    return None
+
+
+def get_day_analytics(day_page_id):
+    """Fetches the Calories%, Protein%, Carbs%, Fats% columns from a Day page.
+
+    Returns an analytics message string, or None if unavailable.
+    """
+    resp = requests.get(f"https://api.notion.com/v1/pages/{day_page_id}", headers=HEADERS)
+    if resp.status_code != 200:
+        return None
+
+    props = resp.json().get("properties", {})
+
+    lines = []
+    for col in ANALYTICS_COLUMNS:
+        value = _extract_number(props.get(col, {}))
+        if value is not None:
+            lines.append(f"{col} {value:g}%")
+        else:
+            lines.append(f"{col} —")
+
+    if all(line.endswith("—") for line in lines):
+        return None
+
+    header = f"📊 Today ({datetime.now().strftime('%b %d, %Y')}):"
+    return header + "\n" + "\n".join(lines)
+
+
 def guess_meal():
     """Guesses the meal based on the current time of day."""
     hour = datetime.now().hour
@@ -313,7 +353,19 @@ def create_meal_log(food_name, food, quantity, meal):
         notice = ""
         if actual_food_name.lower() != food_name.lower():
             notice = f" (matched to nearest food: {actual_food_name})"
-        return f"✅ Logged!\n🍽️ {actual_food_name}{notice}\n⚖️ {quantity:g}\n🍳 {meal}"
+
+        # Formulas/rollups can take a moment to recompute after the new log
+        analytics = None
+        for _ in range(3):
+            time.sleep(1)
+            analytics = get_day_analytics(day_page_id)
+            if analytics:
+                break
+
+        msg = f"✅ Logged!\n🍽️ {actual_food_name}{notice}\n⚖️ {quantity:g}\n🍳 {meal}"
+        if analytics:
+            msg += f"\n\n{analytics}"
+        return msg
     else:
         return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}"
 
@@ -364,3 +416,19 @@ def consume_food_selection(key, index):
 
     _, quantity, meal = parsed
     return create_meal_log(food["name"], food, quantity, meal)
+
+
+def get_nutrition_stats():
+    """Handles /stats. Returns today's analytics from the Days Database."""
+    now = datetime.now()
+    day_title = now.strftime("%b %d, %Y")
+    today_iso = now.strftime("%Y-%m-%d")
+
+    day_page_id = get_or_create_today_page_id(day_title, today_iso)
+    if not day_page_id:
+        return f"❌ Error: Could not find or create Day page for '{day_title}'."
+
+    analytics = get_day_analytics(day_page_id)
+    if not analytics:
+        return f"❌ No analytics available yet for '{day_title}'. Log a meal first with /eat."
+    return analytics
