@@ -88,7 +88,9 @@ def _food_score(query, name):
     return difflib.SequenceMatcher(None, q, n).ratio()
 
 
-CONFIDENT_SCORE = 2.0
+# Only auto-log when the name matches exactly or is made up of only the
+# matching words (no extra words). Anything else shows selection options.
+CONFIDENT_SCORE = 4.0
 MAX_OPTIONS = 5
 
 # Pending food selections awaiting user confirmation: {key: {...}}
