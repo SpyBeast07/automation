@@ -1,5 +1,4 @@
 import os
-import httpx
 import asyncio
 from dotenv import load_dotenv
 from telegram import Update
@@ -11,7 +10,6 @@ from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
 from bot_app.downloader import handle_download
-from ddgs import DDGS
 
 # ---------- ENV ----------
 load_dotenv()
@@ -27,12 +25,7 @@ if os.path.isdir(_venv_bin):
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 AUTHORIZED_USERNAME = os.getenv("AUTHORIZED_USERNAME")
 BASE_DIR = os.getenv("BASE_DIR", "/storage")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# Global HTTP client
-http_client = httpx.AsyncClient(timeout=120.0)
 
 # ---------- SECURITY ----------
 def get_user(update):
@@ -126,112 +119,8 @@ async def system_monitor(app):
         await asyncio.sleep(60)
 
 
-# ---------- AI ----------
-def web_search(query):
-    try:
-        results = DDGS().text(query, max_results=3)
-        if not results:
-            return "No results found."
-        
-        formatted_results = []
-        for r in results:
-            formatted_results.append(f"Source: {r.get('href')}\nContent: {r.get('body')}")
-        
-        return "\n\n".join(formatted_results)
-    except Exception as e:
-        return f"Search error: {str(e)}"
-
-async def ask_ai(prompt):
-
-    chat_url = OLLAMA_URL.replace("generate", "chat")
-    
-    tools = [{
-        'type': 'function',
-        'function': {
-            'name': 'web_search',
-            'description': 'Use this tool to get up-to-date information, news, or prices from the internet.',
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    'query': {'type': 'string', 'description': 'The search keywords'},
-                },
-                'required': ['query'],
-            },
-        },
-    }]
-
-    messages = [
-        {
-            'role': 'system', 
-            'content': 'You are a helpful assistant with web access. If you are asked about current events, prices, or anything you do not know for sure, use the web_search tool.'
-        },
-        {'role': 'user', 'content': prompt}
-    ]
-
-    try:
-        response = await http_client.post(
-            chat_url,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "tools": tools,
-                "stream": False
-            }
-        )
-
-        response.raise_for_status()
-        data = response.json()
-        message = data.get("message", {})
-
-        # Fallback for models that output tool choice as raw JSON text
-        content = message.get("content", "").strip()
-        if not message.get("tool_calls") and content.startswith("{") and content.endswith("}"):
-            import json
-            try:
-                parsed = json.loads(content)
-                if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
-                    message["tool_calls"] = [{"function": parsed}]
-            except Exception:
-                pass
-
-        # Check for tool calls
-        if message.get("tool_calls"):
-            for tool in message["tool_calls"]:
-                if tool["function"]["name"] == 'web_search':
-                    query = tool["function"]["arguments"]["query"]
-                    
-                    loop = asyncio.get_event_loop()
-                    search_data = await loop.run_in_executor(None, web_search, query)
-                    
-                    messages.append(message)
-                    messages.append({'role': 'tool', 'content': search_data})
-                    
-                    final_response = await http_client.post(
-                        chat_url,
-                        json={
-                            "model": OLLAMA_MODEL,
-                            "messages": messages,
-                            "stream": False
-                        }
-                    )
-                    final_response.raise_for_status()
-                    final_data = final_response.json()
-                    return final_data.get("message", {}).get("content", "No response")
-        
-        return message.get("content", "No response")
-
-    except Exception as e:
-        return f"AI error: {str(e)}"
-
-
 # ---------- START ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not is_authorized(update):
-        return
-
-    await update.message.reply_text(
-        """
+HELP_TEXT = """
 Commands:
 /start
 
@@ -246,23 +135,27 @@ Commands:
 
 /dl <link> -- Download media from a link
 """
-    )
 
 
-# ---------- AI CHAT ----------
+async def send_help(update):
+    await update.message.reply_text(HELP_TEXT)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not is_authorized(update):
+        return
+
+    await send_help(update)
+
+
+# ---------- UNKNOWN MESSAGE ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_authorized(update):
         return
 
-    user_message = update.message.text
-
-    await update.message.reply_text("Thinking...")
-
-    result = await ask_ai(user_message)
-
-    for i in range(0, len(result), 4000):
-        await update.message.reply_text(result[i:i+4000])
+    await send_help(update)
 
 
 # ---------- RUN COMMAND ----------

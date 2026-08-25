@@ -1,12 +1,11 @@
 # Telegram AI Automation Bot
 
-A comprehensive, personal Telegram bot built in Python to help manage your Linux system, track expenses via Notion, download media, chat with local LLMs (Ollama + DuckDuckGo search), and intelligently control laptop fans (`nbfc`).
+A comprehensive, personal Telegram bot built in Python to help manage your Linux system, track expenses via Notion, download media, and intelligently control laptop fans (`nbfc`).
 
 ## Features
 
 - **System Monitoring:** Get system status (`/system`), including CPU, memory, and disk usage. The bot also proactively alerts you on high temperatures or low disk space.
 - **Fan Control:** Intelligently controls the system fans (`/fans`) using Nodebook Fan Control (`nbfc`), equipped with rolling averages for quiet cooling at low temperatures and immediate reaction when hot.
-- **Local AI Chat:** Chat securely with an AI powered by `Ollama` running on your local machine (defaulting to `gemma4:e2b`). It automatically uses `DuckDuckGo` web search if it needs real-time information.
 - **Run Remote Commands:** Execute shell commands directly from your Telegram chat safely using `/run`.
 - **Notion Expense Tracker:** Quickly log items to your Notion expense databases (`/ex coffee 54 Food`), and list categories (`/cat`).
 - **Media Downloader:** Downloads media directly to your machine using `/dl <link>`.
@@ -17,7 +16,6 @@ A comprehensive, personal Telegram bot built in Python to help manage your Linux
 Ensure you have the following installed on your host machine:
 - `python3` and `venv`
 - `nbfc` (Notebook Fan Control, required for fan management)
-- `ollama` (For the local AI model)
 - A registered Telegram Bot (via `BotFather`)
 - A Notion integration token (if utilizing the expense tracker)
 
@@ -37,8 +35,7 @@ Ensure you have the following installed on your host machine:
 
 3. **Install Dependencies:**
    ```bash
-   pip install python-telegram-bot httpx python-dotenv duckduckgo-search
-   # (Add any additional dependencies your bot_app modules use, e.g., yt-dlp, notion-client, psutil)
+   pip install python-telegram-bot python-dotenv psutil requests yt-dlp
    ```
 
 4. **Configuration:**
@@ -50,9 +47,8 @@ Ensure you have the following installed on your host machine:
 
    **Required `.env` Variables:**
    - `TELEGRAM_TOKEN`: Your bot token from @BotFather.
-   - `AUTHORIZED_USERNAME`: Your exact Telegram username (without the `@`) to authorize commands.
-   - `OLLAMA_URL`: Local Ollama API (default: `http://localhost:11434/api/generate`).
-   - `BASE_DIR`: Base directory for running shell commands.
+    - `AUTHORIZED_USERNAME`: Your exact Telegram username (without the `@`) to authorize commands.
+    - `BASE_DIR`: Base directory for running shell commands.
    - `TELEGRAM_CHAT_ID`: The ID of your chat (for proactive fan/system alerts).
    - Notion Credentials (`NOTION_TOKEN`, `EXPENSE_DB_ID`, `CATEGORY_DB_ID`) for the tracker to work.
    - `DOWNLOAD_DIR`: Where `/dl` should save files.
@@ -113,4 +109,4 @@ To keep the bot running automatically in the background, you can set it up as a 
 | `/ex <item> <amt> <cat>`| Add an expense to Notion. |
 | `/cat`            | List available categories from Notion database. |
 | `/dl <link>`      | Download media to the configured `DOWNLOAD_DIR`. |
-| `(Any Text)`      | Chat natively with the Local AI. |
+| `(Any Text)`      | Sends the list of available commands. |
