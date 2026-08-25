@@ -250,7 +250,7 @@ def guess_meal():
     hour = datetime.now().hour
     if hour < 12:
         return "Breakfast"
-    elif hour < 17:
+    elif hour < 16:
         return "Lunch"
     return "Dinner"
 
