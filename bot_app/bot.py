@@ -241,10 +241,15 @@ async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = " ".join(context.args)
     loop = asyncio.get_event_loop()
-    result, selection = await loop.run_in_executor(None, log_food, text)
+    result, selection, analytics = await loop.run_in_executor(None, log_food, text)
+
+    await update.message.reply_text(result)
+
+    if analytics:
+        await update.message.reply_text(analytics)
+        return
 
     if not selection:
-        await update.message.reply_text(result)
         return
 
     keyboard = [
@@ -264,7 +269,7 @@ async def on_eat_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     _, key, index = query.data.split(":")
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, consume_food_selection, key, int(index))
+    result, analytics = await loop.run_in_executor(None, consume_food_selection, key, int(index))
 
     if result is None:
         await query.answer("Selection expired. Please use /eat again.")
@@ -272,6 +277,9 @@ async def on_eat_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     await query.edit_message_text(result)
+
+    if analytics:
+        await query.message.reply_text(analytics)
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

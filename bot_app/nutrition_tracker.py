@@ -332,7 +332,10 @@ def _parse_eat(text):
 
 
 def create_meal_log(food_name, food, quantity, meal):
-    """Creates a Meal Log entry for the given food and returns the result message."""
+    """Creates a Meal Log entry for the given food.
+
+    Returns (log_message, analytics_or_None).
+    """
     actual_food_name = food["name"]
 
     # Current date formatting
@@ -342,7 +345,7 @@ def create_meal_log(food_name, food, quantity, meal):
 
     day_page_id = get_or_create_today_page_id(day_title, today_iso)
     if not day_page_id:
-        return f"❌ Error: Could not find or create Day page for '{day_title}'."
+        return f"❌ Error: Could not find or create Day page for '{day_title}'.", None
 
     payload = {
         "parent": {"database_id": MEAL_LOG_DB_ID},
@@ -363,6 +366,8 @@ def create_meal_log(food_name, food, quantity, meal):
         if actual_food_name.lower() != food_name.lower():
             notice = f" (matched to nearest food: {actual_food_name})"
 
+        msg = f"✅ Logged!\n🍽️ {actual_food_name}{notice}\n⚖️ {quantity:g}\n🍳 {meal}"
+
         # Formulas/rollups can take a moment to recompute after the new log
         analytics = None
         for _ in range(3):
@@ -371,33 +376,32 @@ def create_meal_log(food_name, food, quantity, meal):
             if analytics:
                 break
 
-        msg = f"✅ Logged!\n🍽️ {actual_food_name}{notice}\n⚖️ {quantity:g}\n🍳 {meal}"
-        if analytics:
-            msg += f"\n\n{analytics}"
-        return msg
+        return msg, analytics
     else:
-        return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}"
+        return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}", None
 
 
 def log_food(text):
     """Handles /eat input.
 
-    Returns (message, selection_or_None). When no confident food match is found,
-    selection contains the pending options so the bot can show choice buttons.
+    Returns (message, selection_or_None, analytics_or_None). When no confident
+    food match is found, selection contains the pending options so the bot can
+    show choice buttons.
     """
     parsed = _parse_eat(text)
     if isinstance(parsed, str):
-        return parsed, None
+        return parsed, None, None
 
     food_name, quantity, meal = parsed
 
     best, options = find_food_candidates(food_name)
 
     if best:
-        return create_meal_log(food_name, best, quantity, meal), None
+        msg, analytics = create_meal_log(food_name, best, quantity, meal)
+        return msg, None, analytics
 
     if not options:
-        return f"❌ Error: Could not find '{food_name}' in the Food Database.", None
+        return f"❌ Error: Could not find '{food_name}' in the Food Database.", None, None
 
     _next_selection_key[0] += 1
     key = str(_next_selection_key[0])
@@ -408,11 +412,11 @@ def log_food(text):
 
     msg = f"🤔 No confident match found for '{food_name}'. Select the right food:\n"
     msg += "\n".join(f"{i + 1}. {opt['name']}" for i, opt in enumerate(options))
-    return msg, {"key": key, "options": options}
+    return msg, {"key": key, "options": options}, None
 
 
 def consume_food_selection(key, index):
-    """Retrieves and removes a pending selection. Returns (text, food) or None."""
+    """Retrieves and removes a pending selection. Returns (result, analytics) or None."""
     pending = PENDING_FOOD_SELECTIONS.pop(key, None)
     if not pending or index >= len(pending["options"]):
         return None
