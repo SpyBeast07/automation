@@ -137,8 +137,10 @@ MIN_OPTION_SCORE = 1.5
 MAX_OPTIONS = 5
 
 # Pending food selections awaiting user confirmation: {key: {...}}
+# Each entry: {key: {"text": ..., "options": ..., "user_id": ..., "message_id": ..., "timestamp": ...}}
 PENDING_FOOD_SELECTIONS = {}
 _next_selection_key = [0]
+SELECTION_TIMEOUT = 180  # 3 minutes in seconds
 
 
 def find_food_candidates(food_name):
@@ -424,7 +426,7 @@ def create_meal_log(food_name, food, quantity, meal):
         return f"❌ Notion Error: {resp.json().get('message', 'Unknown Error')}", None
 
 
-def log_food(text):
+def log_food(text, user_id=None):
     """Handles /eat input.
 
     Returns (message, selection_or_None, analytics_or_None). When no confident
@@ -450,7 +452,9 @@ def log_food(text):
     key = str(_next_selection_key[0])
     PENDING_FOOD_SELECTIONS[key] = {
         "text": text,
-        "options": options
+        "options": options,
+        "user_id": user_id,
+        "timestamp": time.time()
     }
 
     msg = f"🤔 No confident match found for '{food_name}'. Select the right food:\n"
@@ -472,6 +476,33 @@ def consume_food_selection(key, index):
 
     _, quantity, meal = parsed
     return create_meal_log(food["name"], food, quantity, meal)
+
+
+def cancel_pending_selection(user_id):
+    """Cancels any pending food selection for a user. Returns (key, message_id) if cancelled."""
+    for key, pending in list(PENDING_FOOD_SELECTIONS.items()):
+        if pending.get("user_id") == user_id:
+            message_id = pending.get("message_id")
+            del PENDING_FOOD_SELECTIONS[key]
+            return key, message_id
+    return None, None
+
+
+def cleanup_expired_selections():
+    """Removes expired pending selections. Returns list of (key, message_id) for expired items."""
+    now = time.time()
+    expired = []
+    for key, pending in list(PENDING_FOOD_SELECTIONS.items()):
+        if now - pending.get("timestamp", 0) > SELECTION_TIMEOUT:
+            expired.append((key, pending.get("message_id")))
+            del PENDING_FOOD_SELECTIONS[key]
+    return expired
+
+
+def update_pending_message_id(key, message_id):
+    """Updates the pending selection with the message_id."""
+    if key in PENDING_FOOD_SELECTIONS:
+        PENDING_FOOD_SELECTIONS[key]["message_id"] = message_id
 
 
 def get_nutrition_stats():

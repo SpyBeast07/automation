@@ -9,7 +9,7 @@ from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
-from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats, refresh_food_cache
+from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats, refresh_food_cache, cancel_pending_selection, cleanup_expired_selections, update_pending_message_id
 
 # ---------- ENV ----------
 load_dotenv()
@@ -119,6 +119,33 @@ async def system_monitor(app):
         await asyncio.sleep(60)
 
 
+# ---------- FOOD SELECTION CLEANUP ----------
+async def food_selection_cleanup(app):
+    """Background task to clean up expired food selections and notify users."""
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            loop = asyncio.get_event_loop()
+            expired = await loop.run_in_executor(None, cleanup_expired_selections)
+
+            for key, message_id in expired:
+                if message_id and CHAT_ID:
+                    try:
+                        await app.bot.edit_message_text(
+                            chat_id=CHAT_ID,
+                            message_id=message_id,
+                            text="⏱️ Selection expired (3 min timeout). Not logged."
+                        )
+                    except Exception as e:
+                        print(f"Failed to edit expired selection message: {e}")
+
+        except Exception as e:
+            print("Food selection cleanup error:", e)
+
+        await asyncio.sleep(30)
+
+
 # ---------- START ----------
 HELP_TEXT = """
 Commands:
@@ -156,6 +183,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_authorized(update):
         return
+
+    user_id = update.message.from_user.id
+    loop = asyncio.get_event_loop()
+
+    # Cancel any pending food selection for this user
+    cancelled_key, cancelled_msg_id = await loop.run_in_executor(None, cancel_pending_selection, user_id)
+    if cancelled_key and cancelled_msg_id and CHAT_ID:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=CHAT_ID,
+                message_id=cancelled_msg_id,
+                text="🚫 Selection cancelled (new message received). Not logged."
+            )
+        except Exception:
+            pass
 
     await send_help(update)
 
@@ -240,9 +282,23 @@ async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /eat [Food Name] [Quantity] [Optional Meal]\nExample: /eat Paneer 150 Snacks")
         return
 
-    text = " ".join(context.args)
+    user_id = update.message.from_user.id
     loop = asyncio.get_event_loop()
-    result, selection, analytics = await loop.run_in_executor(None, log_food, text)
+
+    # Cancel any existing pending selection for this user
+    cancelled_key, cancelled_msg_id = await loop.run_in_executor(None, cancel_pending_selection, user_id)
+    if cancelled_key and cancelled_msg_id and CHAT_ID:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=CHAT_ID,
+                message_id=cancelled_msg_id,
+                text="🚫 Previous selection cancelled. Not logged."
+            )
+        except Exception:
+            pass
+
+    text = " ".join(context.args)
+    result, selection, analytics = await loop.run_in_executor(None, log_food, text, user_id)
 
     if analytics:
         await update.message.reply_text(result)
@@ -257,7 +313,11 @@ async def eat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(opt["name"], callback_data=f"eat:{selection['key']}:{i}")]
         for i, opt in enumerate(selection["options"])
     ]
-    await update.message.reply_text(result, reply_markup=InlineKeyboardMarkup(keyboard))
+    sent_msg = await update.message.reply_text(result, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    # Store message_id in pending selection for cleanup
+    if selection and selection.get("key"):
+        await loop.run_in_executor(None, update_pending_message_id, selection["key"], sent_msg.message_id)
 
 
 async def on_eat_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,6 +365,7 @@ async def refreshfoods_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
     asyncio.create_task(system_monitor(app))
+    asyncio.create_task(food_selection_cleanup(app))
 
 
 def create_app():
