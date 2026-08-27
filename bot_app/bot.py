@@ -9,7 +9,7 @@ from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
-from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats
+from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats, refresh_food_cache
 
 # ---------- ENV ----------
 load_dotenv()
@@ -135,6 +135,7 @@ Commands:
 
 /eat <food> <qty> [meal] -- Log food
 /stats -- Today's nutrition analytics
+/refreshfoods -- Refresh food database cache
 """
 
 
@@ -291,6 +292,15 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result)
 
 
+async def refreshfoods_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, refresh_food_cache)
+    await update.message.reply_text("✅ Food cache refreshed. Next /eat will fetch fresh data from Notion.")
+
+
 # ---------- APP ----------
 async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
@@ -321,6 +331,7 @@ def create_app():
     app.add_handler(CommandHandler("cat", cat_command))
     app.add_handler(CommandHandler("eat", eat_command))
     app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("refreshfoods", refreshfoods_command))
     app.add_handler(CallbackQueryHandler(on_eat_selection, pattern="^eat:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

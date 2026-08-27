@@ -41,7 +41,12 @@ def get_title_prop_name(db_id):
 
 # Cache of the full food list to avoid re-fetching huge databases on every /eat
 FOODS_CACHE = {"foods": None, "ts": 0}
-FOODS_CACHE_TTL = 600  # seconds
+
+
+def refresh_food_cache():
+    """Force refresh the food cache by invalidating the timestamp."""
+    FOODS_CACHE["foods"] = None
+    FOODS_CACHE["ts"] = 0
 
 
 def fetch_all_foods():
@@ -78,8 +83,8 @@ def fetch_all_foods():
 
 
 def get_all_foods():
-    """Returns the full food list, using a time-based cache for large databases."""
-    if FOODS_CACHE["foods"] is None or time.time() - FOODS_CACHE["ts"] > FOODS_CACHE_TTL:
+    """Returns the full food list, using a manual refresh cache for large databases."""
+    if FOODS_CACHE["foods"] is None:
         foods = fetch_all_foods()
         if foods:
             FOODS_CACHE["foods"] = foods
