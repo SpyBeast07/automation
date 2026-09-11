@@ -12,7 +12,7 @@ API_MESSAGE = os.getenv("WA_API_MESSAGE", "Health check ping")
 
 # Alert only after this many consecutive failed checks,
 # so a single hiccup never triggers a false alarm
-FAILURE_THRESHOLD = 3
+FAILURE_THRESHOLD = 1
 
 # Sticky state to avoid spamming the same alert
 _fail_count = 0
@@ -37,10 +37,17 @@ def probe_whatsapp_api():
     except requests.RequestException as e:
         return False, f"request failed: {e}"
 
-    if 200 <= response.status_code < 300:
-        return True, ""
+    if not 200 <= response.status_code < 300:
+        return False, f"HTTP {response.status_code}: {response.text[:150]}"
 
-    return False, f"HTTP {response.status_code}: {response.text[:150]}"
+    # Successful sends return a JSON body carrying the message id (e.g. {"id": "true_..."})
+    try:
+        data = response.json()
+        if data and data.get("id"):
+            return True, ""
+        return False, f"no message id returned: {response.text[:150]}"
+    except ValueError:
+        return False, f"invalid response: {response.text[:150]}"
 
 
 def whatsapp_api_alert():
