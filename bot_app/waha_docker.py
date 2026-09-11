@@ -10,12 +10,17 @@ API_KEY = os.getenv("WA_API_KEY")
 API_PHONE = os.getenv("WA_API_PHONE", "919269972395")
 API_MESSAGE = os.getenv("WA_API_MESSAGE", "Health check ping")
 
-# Store the last known state to prevent spamming the same alert
-_API_DOWN = False
+# Alert only after this many consecutive failed checks,
+# so a single hiccup never triggers a false alarm
+FAILURE_THRESHOLD = 3
+
+# Sticky state to avoid spamming the same alert
+_fail_count = 0
+_api_down = False
 
 
-def is_whatsapp_api_working():
-    """Send a health-check message via the WA API and report if it was accepted."""
+def probe_whatsapp_api():
+    """Try sending a health-check message. Return (ok, reason)."""
     try:
         response = requests.post(
             API_URL,
@@ -29,22 +34,33 @@ def is_whatsapp_api_working():
             },
             timeout=20,
         )
-        return 200 <= response.status_code < 300
-    except requests.RequestException:
-        return False
+    except requests.RequestException as e:
+        return False, f"request failed: {e}"
+
+    if 200 <= response.status_code < 300:
+        return True, ""
+
+    return False, f"HTTP {response.status_code}: {response.text[:150]}"
 
 
 def whatsapp_api_alert():
-    """Return an alert message only when the API first stops working."""
-    global _API_DOWN
+    """Return an alert message only once the API stays down past the threshold."""
+    global _fail_count, _api_down
 
-    working = is_whatsapp_api_working()
+    ok, reason = probe_whatsapp_api()
 
-    if not working and not _API_DOWN:
-        _API_DOWN = True
-        return "⚠️ WhatsApp API is not working."
+    if ok:
+        _fail_count = 0
+        _api_down = False
+        return None
 
-    if working and _API_DOWN:
-        _API_DOWN = False
+    _fail_count += 1
 
-    return None
+    if _fail_count < FAILURE_THRESHOLD:
+        return None
+
+    if _api_down:
+        return None
+
+    _api_down = True
+    return f"⚠️ WhatsApp API is not working ({_fail_count} consecutive failures, last error: {reason})."
