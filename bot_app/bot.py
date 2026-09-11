@@ -10,6 +10,7 @@ from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
 from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
 from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats, refresh_food_cache, cancel_pending_selection, cleanup_expired_selections, update_pending_message_id
+from bot_app.waha_docker import whatsapp_api_alert
 
 # ---------- ENV ----------
 load_dotenv()
@@ -144,6 +145,29 @@ async def food_selection_cleanup(app):
             print("Food selection cleanup error:", e)
 
         await asyncio.sleep(30)
+
+
+# ---------- WHATSAPP API MONITOR ----------
+async def whatsapp_api_monitor(app):
+
+    await asyncio.sleep(20)
+
+    while True:
+
+        try:
+            loop = asyncio.get_event_loop()
+            alert = await loop.run_in_executor(None, whatsapp_api_alert)
+
+            if alert and CHAT_ID:
+                await app.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=alert
+                )
+
+        except Exception as e:
+            print("WhatsApp API monitor error:", e)
+
+        await asyncio.sleep(6 * 60 * 60)
 
 
 # ---------- START ----------
@@ -366,6 +390,7 @@ async def on_startup(app):
     asyncio.create_task(fan_monitor(app))
     asyncio.create_task(system_monitor(app))
     asyncio.create_task(food_selection_cleanup(app))
+    asyncio.create_task(whatsapp_api_monitor(app))
 
 
 def create_app():
