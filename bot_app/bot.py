@@ -167,7 +167,7 @@ async def whatsapp_api_monitor(app):
         except Exception as e:
             print("WhatsApp API monitor error:", e)
 
-        await asyncio.sleep(6 * 60 * 60)
+        await asyncio.sleep(24 * 60 * 60)
 
 
 # ---------- START ----------
