@@ -8,7 +8,7 @@ from telegram.request import HTTPXRequest
 from bot_app.status import get_system_status
 from bot_app.fan_control import fan_logic, get_fan_status
 from bot_app.system_warnings import check_system_health
-from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
+# from bot_app.expense_tracker import list_categories, add_to_notion, add_income_to_notion
 from bot_app.nutrition_tracker import log_food, consume_food_selection, get_nutrition_stats, refresh_food_cache, cancel_pending_selection, cleanup_expired_selections, update_pending_message_id
 from bot_app.waha_docker import whatsapp_api_alert
 
@@ -167,7 +167,7 @@ async def whatsapp_api_monitor(app):
         except Exception as e:
             print("WhatsApp API monitor error:", e)
 
-        await asyncio.sleep(24 * 60 * 60)
+        await asyncio.sleep(12 * 60 * 60)
 
 
 # ---------- START ----------
@@ -180,9 +180,9 @@ Commands:
 /system -- Get system status
 /fans -- Get fan status
 
-/in -- Add new income
-/ex -- Add new expense
-/cat -- List expense categories
+# /in -- Add new income
+# /ex -- Add new expense
+# /cat -- List expense categories
 
 /eat <food> <qty> [meal] -- Log food
 /stats -- Today's nutrition analytics
@@ -261,40 +261,40 @@ async def run(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}")
 
 
-# ---------- EXPENSES ----------
-async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update):
-        return
-
-    if not context.args:
-        await update.message.reply_text("Usage: /ex [Item Name] [Amount] [Category]\nExample: /ex coffee 54 Food")
-        return
-
-    text = " ".join(context.args)
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, add_to_notion, text)
-    await update.message.reply_text(result)
-
-async def in_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update):
-        return
-
-    if not context.args:
-        await update.message.reply_text("Usage: /in [Item Name] [Amount] [Source]\nExample: /in TCS 14500 Salary")
-        return
-
-    text = " ".join(context.args)
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, add_income_to_notion, text)
-    await update.message.reply_text(result)
-
-async def cat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update):
-        return
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, list_categories)
-    await update.message.reply_text(result, parse_mode="Markdown")
+# ---------- EXPENSES (disabled) ----------
+# async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     if not is_authorized(update):
+#         return
+#
+#     if not context.args:
+#         await update.message.reply_text("Usage: /ex [Item Name] [Amount] [Category]\nExample: /ex coffee 54 Food")
+#         return
+#
+#     text = " ".join(context.args)
+#     loop = asyncio.get_event_loop()
+#     result = await loop.run_in_executor(None, add_to_notion, text)
+#     await update.message.reply_text(result)
+#
+# async def in_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     if not is_authorized(update):
+#         return
+#
+#     if not context.args:
+#         await update.message.reply_text("Usage: /in [Item Name] [Amount] [Source]\nExample: /in TCS 14500 Salary")
+#         return
+#
+#     text = " ".join(context.args)
+#     loop = asyncio.get_event_loop()
+#     result = await loop.run_in_executor(None, add_income_to_notion, text)
+#     await update.message.reply_text(result)
+#
+# async def cat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     if not is_authorized(update):
+#         return
+#
+#     loop = asyncio.get_event_loop()
+#     result = await loop.run_in_executor(None, list_categories)
+#     await update.message.reply_text(result, parse_mode="Markdown")
 
 
 # ---------- NUTRITION ----------
@@ -412,9 +412,9 @@ def create_app():
     app.add_handler(CommandHandler("run", run))
     app.add_handler(CommandHandler("system", status))
     app.add_handler(CommandHandler("fans", fans))
-    app.add_handler(CommandHandler("ex", ex_command))
-    app.add_handler(CommandHandler("in", in_command))
-    app.add_handler(CommandHandler("cat", cat_command))
+    # app.add_handler(CommandHandler("ex", ex_command))
+    # app.add_handler(CommandHandler("in", in_command))
+    # app.add_handler(CommandHandler("cat", cat_command))
     app.add_handler(CommandHandler("eat", eat_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("refreshfoods", refreshfoods_command))
