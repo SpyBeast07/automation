@@ -180,10 +180,6 @@ Commands:
 /system -- Get system status
 /fans -- Get fan status
 
-# /in -- Add new income
-# /ex -- Add new expense
-# /cat -- List expense categories
-
 /eat <food> <qty> [meal] -- Log food
 /stats -- Today's nutrition analytics
 /refreshfoods -- Refresh food database cache
